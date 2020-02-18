@@ -1,5 +1,7 @@
 package iouring
 
+import "sync"
+
 // Params are used to configured a io uring.
 type Params struct {
 	SqEntries    uint32
@@ -52,20 +54,17 @@ type SubmitEntry struct {
 
 // SubmitQueue represents the submit queue ring buffer.
 type SubmitQueue struct {
-	Head        *uint
-	Tail        *uint
-	RingMask    *uint
-	RingEntries *uint
-	Flags       *uint
-	Dropped     *uint
+	Size uint
+	Head *uint
+	Tail *uint
+	Mask *uint
+	//Entries *uint
+	Flags   *uint
+	Dropped *uint
 
-	Entries []SubmitEntry
-
-	SqeHead *uint
-	SqeTail *uint
-
-	RingSize uint
-	//ringPtr void
+	// Entries must never be resized, it is mmap'd.
+	Entries   []SubmitEntry
+	entriesMu sync.RWMutex
 }
 
 // CompletionEntry IO completion data structure (Completion Queue Entry).
@@ -77,13 +76,14 @@ type CompletionEntry struct {
 
 // CompletionQueue represents the completion queue ring buffer.
 type CompletionQueue struct {
-	Head        *uint
-	Tail        *uint
-	RingMask    *uint
-	RingEntries *uint
-	Overflow    *uint
-	Entries     []CompletionEntry
+	Size uint
+	Head *uint
+	Tail *uint
+	Mask *uint
+	//Entries  *uint
+	Overflow *uint
 
-	RingSize uint
-	//ringPtr void
+	// Entries must never be resized, it is mmap'd.
+	Entries   []CompletionEntry
+	entriesMu sync.RWMutex
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestEnter(t *testing.T) {
-	var p Params
+	p := Params{}
 	fd, err := Setup(1024, &p)
 	if err != nil {
 		t.Fatal(err)
