@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Ring contains an io_uring submit and completion ring.
 type Ring struct {
 	fd   int
 	cq   *CompletionQueue
@@ -61,8 +62,9 @@ func (r *Ring) Close() error {
 func (r *Ring) closeCq() error {
 	r.cqMu.Lock()
 	defer r.cqMu.Unlock()
-
-	r.cq = nil
+	if r.cq == nil {
+		return nil
+	}
 
 	err := syscall.Munmap(*(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(&r.cq.Entries[0])),
@@ -73,7 +75,7 @@ func (r *Ring) closeCq() error {
 		return err
 	}
 
-	r.sq = nil
+	r.cq = nil
 	return nil
 }
 
