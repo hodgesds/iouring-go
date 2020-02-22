@@ -9,8 +9,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	var p Params
-	r, err := New(2048, &p)
+	r, err := New(2048)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -28,11 +27,11 @@ func TestNew(t *testing.T) {
 	require.NotNil(t, r.cq.Tail)
 	require.NotNil(t, r.cq.Mask)
 	require.NotNil(t, r.cq.Entries)
-	require.NotNil(t, r.cq.Entries)
+
+	require.NoError(t, r.Close())
 }
 
 func TestNewRingInvalidSize(t *testing.T) {
-	var p Params
-	_, err := New(99999, &p)
+	_, err := New(99999)
 	require.Error(t, err)
 }

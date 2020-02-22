@@ -12,12 +12,21 @@ const (
 	SetupSyscall = 425
 	// EnterSyscall defines the syscall number for io_uring_enter.
 	EnterSyscall = 426
-
 	// RegisterSyscall defines the syscall number for io_uring_register.
 	RegisterSyscall = 427
 )
 
 const (
+
+	/*
+	 * io_uring_params->features flags
+	 */
+	FeatSingleMmap     = (1 << 0)
+	FeatNoDrop         = (1 << 1)
+	FeatSubMitStable   = (1 << 2)
+	FeatRwCurPos       = (1 << 3)
+	FeatCurPersonality = (1 << 4)
+
 	/*
 	 * sqe->flags
 	 */
@@ -47,6 +56,8 @@ const (
 	PollAdd       Opcode = 6
 	PollRemove    Opcode = 7
 	SyncFileRange Opcode = 8
+
+	OpSupported = (1 << 0)
 
 	/*
 	 * sqe->fsync_flags
@@ -93,9 +104,3 @@ const (
 	RegisterEventfd   = 4
 	UnregisteREventfd = 5
 )
-
-// KernelTimespec is a kernel timespec.
-type KernelTimespec struct {
-	Sec  int64
-	Nsec int64
-}

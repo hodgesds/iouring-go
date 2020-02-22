@@ -3,10 +3,11 @@
 package iouring
 
 import (
-	"errors"
 	"reflect"
 	"syscall"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -21,83 +22,102 @@ func Setup(entries uint, params *Params) (int, error) {
 	if entries < 1 || entries > 4096 || !((entries & (entries - 1)) == 0) {
 		return 0, errInvalidEntries
 	}
-	_, _, errno := syscall.Syscall(SetupSyscall, uintptr(entries), uintptr(unsafe.Pointer(params)), uintptr(0))
-	if errno < 0 {
+	fd, _, errno := syscall.Syscall(
+		SetupSyscall,
+		uintptr(entries),
+		uintptr(unsafe.Pointer(params)),
+		uintptr(0),
+	)
+	if errno != 0 {
 		var err error
 		err = errno
 		return 0, err
 	}
-	return int(errno), nil
+	return int(fd), nil
 }
 
-// MmapSubmitRing is used to configured the submit queue, it should only be
-// called after the Setup function has completed successfully.
+// MmapRing is used to configure the submit and completion queues, it should only
+// be called after the Setup function has completed successfully.
 // See:
 // https://github.com/axboe/liburing/blob/master/src/setup.c#L22
-func MmapSubmitRing(fd int, p *Params, sq *SubmitQueue) error {
+func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
+	var (
+		cqPtr uintptr
+		sqPtr uintptr
+		errno syscall.Errno
+		err   error
+	)
+	singleMmap := p.Flags&FeatSingleMmap != 0
 	sq.Size = uint(p.SqOffset.Array) + (uint(p.SqEntries) * uint(uint32Size))
-	ptr, _, errno := syscall.Syscall6(
+	cq.Size = uint(p.CqOffset.Cqes) + (uint(p.CqEntries) * uint(cqeSize))
+
+	if singleMmap {
+		if cq.Size > sq.Size {
+			sq.Size = cq.Size
+		} else {
+			cq.Size = sq.Size
+		}
+	}
+
+	sqPtr, _, errno = syscall.Syscall6(
 		syscall.SYS_MMAP,
 		uintptr(0),
 		uintptr(sq.Size),
-		syscall.PROT_READ|syscall.PROT_WRITE|syscall.MAP_SHARED|syscall.MAP_POPULATE,
-		uintptr(0),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_SHARED|syscall.MAP_POPULATE,
 		uintptr(fd),
 		uintptr(SqRingOffset),
 	)
-	if errno < 0 {
-		var err error
+	if errno != 0 {
 		err = errno
-		return err
+		return errors.Wrap(err, "failed to mmap sq ring")
+	}
+	if singleMmap {
+		cqPtr = sqPtr
+	} else {
+		cqPtr, _, errno = syscall.Syscall6(
+			syscall.SYS_MMAP,
+			uintptr(0),
+			uintptr(cq.Size),
+			syscall.PROT_READ|syscall.PROT_WRITE,
+			syscall.MAP_SHARED|syscall.MAP_POPULATE,
+			uintptr(fd),
+			uintptr(CqRingOffset),
+		)
+		if errno != 0 {
+			err = errno
+			return errors.Wrap(err, "failed to mmap cq ring")
+		}
 	}
 
 	// Conversion of a uintptr back to Pointer is not valid in general,
 	// except for:
 	// 3) Conversion of a Pointer to a uintptr and back, with arithmetic.
-	sq.Head = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.SqOffset.Head))))
-	sq.Tail = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.SqOffset.Tail))))
-	sq.Mask = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.SqOffset.RingMask))))
-	sq.Flags = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.SqOffset.Flags))))
-	sq.Dropped = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.SqOffset.Dropped))))
+	sq.Head = (*uint)(unsafe.Pointer(sqPtr + uintptr(p.SqOffset.Head)))
+	sq.Tail = (*uint)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Tail))))
+	sq.Mask = (*uint)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.RingMask))))
+	sq.Flags = (*uint)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Flags))))
+	sq.Dropped = (*uint)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Dropped))))
 
 	// Making mmap'd slices is annoying.
 	sq.Entries = *(*[]SubmitEntry)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(uint(ptr) + uint(p.SqOffset.RingEntries)),
+		Data: uintptr(uint(sqPtr) + uint(p.SqOffset.RingEntries)),
 		Len:  int(p.SqEntries),
 		Cap:  int(p.SqEntries),
 	}))
 
-	return nil
-}
-
-// MmapCompletionRing is used to mmap the completion ring buffer.
-func MmapCompletionRing(fd int, p *Params, cq *CompletionQueue) error {
-	cq.Size = uint(p.CqOffset.Cqes) + (uint(p.CqEntries) * uint(cqeSize))
-	ptr, _, errno := syscall.Syscall6(
-		syscall.SYS_MMAP,
-		uintptr(0),
-		uintptr(cq.Size),
-		syscall.PROT_READ|syscall.PROT_WRITE|syscall.MAP_SHARED|syscall.MAP_POPULATE,
-		uintptr(0),
-		uintptr(fd),
-		uintptr(CqRingOffset),
-	)
-	if errno < 0 {
-		var err error
-		err = errno
-		return err
-	}
-
-	cq.Head = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.CqOffset.Head))))
-	cq.Tail = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.CqOffset.Tail))))
-	cq.Mask = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.CqOffset.RingMask))))
-	cq.Overflow = (*uint)(unsafe.Pointer(uintptr(uint(ptr) + uint(p.CqOffset.Overflow))))
+	cq.Head = (*uint)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Head))))
+	cq.Tail = (*uint)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Tail))))
+	cq.Mask = (*uint)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.RingMask))))
+	cq.Overflow = (*uint)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Overflow))))
 
 	cq.Entries = *(*[]CompletionEntry)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(uint(ptr) + uint(p.CqOffset.RingEntries)),
+		Data: uintptr(uint(cqPtr) + uint(p.CqOffset.RingEntries)),
 		Len:  int(p.CqEntries),
 		Cap:  int(p.CqEntries),
 	}))
 
+	cq.ptr = cqPtr
+	sq.ptr = sqPtr
 	return nil
 }

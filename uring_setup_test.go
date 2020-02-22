@@ -3,7 +3,6 @@
 package iouring
 
 import (
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,55 +10,21 @@ import (
 
 func TestSetupInvalidEntries(t *testing.T) {
 	var p Params
-	fd, err := Setup(0, &p)
-	if err == nil {
-		t.Fatal("expected Setup to fail")
-	}
-	defer require.NoError(t, syscall.Close(fd))
+	_, err := Setup(0, &p)
+	require.Error(t, err)
 	_, err = Setup(8192, &p)
-	if err == nil {
-		t.Fatal("expected Setup to fail")
-	}
+	require.Error(t, err)
 	_, err = Setup(9999, &p)
-	if err == nil {
-		t.Fatal("expected Setup to fail")
-	}
-}
-
-func TestSetupValidEntries(t *testing.T) {
-	var p Params
-	fd, err := Setup(1024, &p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer require.NoError(t, syscall.Close(fd))
-	if fd <= 0 {
-		t.Fatalf("expected valid fd, got: %d", fd)
-	}
+	require.Error(t, err)
 }
 
 func TestMmapSubmitRing(t *testing.T) {
 	var p Params
 	fd, err := Setup(1024, &p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer require.NoError(t, syscall.Close(fd))
-	var sq SubmitQueue
-	if err := MmapSubmitRing(fd, &p, &sq); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestMmapCompletionRing(t *testing.T) {
-	var p Params
-	fd, err := Setup(1024, &p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer require.NoError(t, syscall.Close(fd))
-	var cq CompletionQueue
-	if err := MmapCompletionRing(fd, &p, &cq); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	var (
+		cq CompletionQueue
+		sq SubmitQueue
+	)
+	require.NoError(t, MmapRing(fd, &p, &sq, &cq))
 }

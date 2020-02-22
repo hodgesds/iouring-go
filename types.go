@@ -54,17 +54,18 @@ type SubmitEntry struct {
 
 // SubmitQueue represents the submit queue ring buffer.
 type SubmitQueue struct {
-	Size uint
-	Head *uint
-	Tail *uint
-	Mask *uint
-	//Entries *uint
+	Size    uint
+	Head    *uint
+	Tail    *uint
+	Mask    *uint
 	Flags   *uint
 	Dropped *uint
 
 	// Entries must never be resized, it is mmap'd.
 	Entries   []SubmitEntry
 	entriesMu sync.RWMutex
+	// ptr is pointer to the start of the mmap.
+	ptr uintptr
 }
 
 // CompletionEntry IO completion data structure (Completion Queue Entry).
@@ -76,14 +77,21 @@ type CompletionEntry struct {
 
 // CompletionQueue represents the completion queue ring buffer.
 type CompletionQueue struct {
-	Size uint
-	Head *uint
-	Tail *uint
-	Mask *uint
-	//Entries  *uint
+	Size     uint
+	Head     *uint
+	Tail     *uint
+	Mask     *uint
 	Overflow *uint
 
 	// Entries must never be resized, it is mmap'd.
 	Entries   []CompletionEntry
 	entriesMu sync.RWMutex
+	// ptr is pointer to the start of the mmap.
+	ptr uintptr
+}
+
+// KernelTimespec is a kernel timespec.
+type KernelTimespec struct {
+	Sec  int64
+	Nsec int64
 }
