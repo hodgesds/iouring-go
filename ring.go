@@ -1,7 +1,9 @@
 package iouring
 
 import (
+	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/pkg/errors"
@@ -10,12 +12,14 @@ import (
 
 // Ring contains an io_uring submit and completion ring.
 type Ring struct {
-	fd   int
-	p    *Params
-	cq   *CompletionQueue
-	cqMu sync.RWMutex
-	sq   *SubmitQueue
-	sqMu sync.RWMutex
+	fd     int
+	p      *Params
+	cq     *CompletionQueue
+	cqMu   sync.RWMutex
+	sq     *SubmitQueue
+	sqMu   sync.RWMutex
+	sqPool sync.Pool
+	idx    *uint64
 }
 
 // New is used to create an iouring.Ring.
@@ -32,17 +36,19 @@ func New(size uint) (*Ring, error) {
 	if err := MmapRing(fd, &p, &sq, &cq); err != nil {
 		return nil, err
 	}
+	idx := uint64(0)
 	return &Ring{
-		p:  &p,
-		fd: fd,
-		cq: &cq,
-		sq: &sq,
+		p:   &p,
+		fd:  fd,
+		cq:  &cq,
+		sq:  &sq,
+		idx: &idx,
 	}, nil
 }
 
-func (r *Ring) Submit(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
-	// XXX: Make these options.
-	if err := Enter(r.fd, toSubmit, minComplete, EnterGetevents, nil); err != nil {
+// Enter is used to enter the ring.
+func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
+	if err := Enter(r.fd, toSubmit, minComplete, flags, sigset); err != nil {
 		return err
 	}
 	return nil
@@ -53,7 +59,7 @@ func (r *Ring) Close() error {
 	if err := r.closeSq(); err != nil {
 		return err
 	}
-	if r.p.Flags&FeatSingleMmap != 0 {
+	if r.p.Flags&FeatSingleMmap == 0 {
 		if err := r.closeCq(); err != nil {
 			return err
 		}
@@ -112,21 +118,43 @@ func (r *Ring) closeSq() error {
 // SubmitHead returns the position of the head of the submit queue. This method
 // is safe for calling concurrently.
 func (r *Ring) SubmitHead() int {
-	r.sqMu.RLock()
-	defer r.sqMu.RUnlock()
-	if r.sq == nil || r.sq.Head == nil {
-		return 0
-	}
-	return int(*r.sq.Head)
+	return int(atomic.LoadUint32(r.sq.Head))
 }
 
 // SubmitTail returns the position of the tail of the submit queue. This method
 // is safe for calling concurrently.
 func (r *Ring) SubmitTail() int {
-	r.sqMu.RLock()
-	defer r.sqMu.RUnlock()
-	if r.sq == nil || r.sq.Tail == nil {
-		return 0
+	return int(atomic.LoadUint32(r.sq.Tail))
+}
+
+// Sqe returns the offset of the next available SQE.
+func (r *Ring) Sqe() int {
+	v := atomic.AddUint32(r.sq.Head, 1)
+	// If the end of the slice is reached then allocate the first postion
+	if v == r.sq.Size {
+		if !atomic.CompareAndSwapUint32(r.sq.Head, v, 0) {
+			return r.Sqe()
+		}
+		tail := r.SubmitTail()
+		// If there's something at the start then enter the ring first.
+		if tail != 0 {
+			return 0
+		}
+		_ = r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+		return 0 // or r.AllocateSqe()?
 	}
-	return int(*r.sq.Tail)
+	return int(v)
+}
+
+// Idx returns an id for a
+func (r *Ring) Idx() uint64 {
+	return atomic.AddUint64(r.idx, 1)
+}
+
+// FileReadWriter returns an io.ReadWriter from an os.File that uses the ring.
+func (r *Ring) FileReadWriter(f *os.File) ReadWriteAtCloser {
+	return &ringFIO{
+		r: r,
+		f: f,
+	}
 }

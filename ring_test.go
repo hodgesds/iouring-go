@@ -35,3 +35,19 @@ func TestNewRingInvalidSize(t *testing.T) {
 	_, err := New(99999)
 	require.Error(t, err)
 }
+
+func TestRingEnter(t *testing.T) {
+	r, err := New(2048)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	count := 0
+	for i := r.SubmitHead(); i < r.SubmitTail(); i++ {
+		r.sq.Entries[i] = SubmitEntry{
+			Opcode:   Nop,
+			UserData: uint64(i),
+		}
+		count++
+	}
+	err = r.Enter(uint(count), uint(count), EnterGetEvents, nil)
+	require.NoError(t, err)
+}

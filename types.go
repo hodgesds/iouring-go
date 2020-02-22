@@ -1,6 +1,10 @@
 package iouring
 
-import "sync"
+import (
+	"io"
+	"os"
+	"sync"
+)
 
 // Params are used to configured a io uring.
 type Params struct {
@@ -52,14 +56,27 @@ type SubmitEntry struct {
 	BufIndex uint16 /* index into fixed buffers, if used */
 }
 
+// Reset is used to reset an SubmitEntry.
+func (e *SubmitEntry) Reset() {
+	e.Flags = 0
+	e.Ioprio = 0
+	e.Fd = -1
+	e.Off = 0
+	e.Addr = 0
+	e.Len = 0
+	e.UFlags = 0
+	e.UserData = 0
+	e.BufIndex = 0
+}
+
 // SubmitQueue represents the submit queue ring buffer.
 type SubmitQueue struct {
-	Size    uint
-	Head    *uint
-	Tail    *uint
-	Mask    *uint
-	Flags   *uint
-	Dropped *uint
+	Size    uint32
+	Head    *uint32
+	Tail    *uint32
+	Mask    *uint32
+	Flags   *uint32
+	Dropped *uint32
 
 	// Entries must never be resized, it is mmap'd.
 	Entries   []SubmitEntry
@@ -77,11 +94,11 @@ type CompletionEntry struct {
 
 // CompletionQueue represents the completion queue ring buffer.
 type CompletionQueue struct {
-	Size     uint
-	Head     *uint
-	Tail     *uint
-	Mask     *uint
-	Overflow *uint
+	Size     uint32
+	Head     *uint32
+	Tail     *uint32
+	Mask     *uint32
+	Overflow *uint32
 
 	// Entries must never be resized, it is mmap'd.
 	Entries   []CompletionEntry
@@ -94,4 +111,44 @@ type CompletionQueue struct {
 type KernelTimespec struct {
 	Sec  int64
 	Nsec int64
+}
+
+// ReadWriteAtCloser supports reading, writing, and closing.
+type ReadWriteAtCloser interface {
+	io.WriterAt
+	io.ReadWriteCloser
+}
+
+// ringFIO is used for handling file IO.
+type ringFIO struct {
+	r       *Ring
+	f       *os.File
+	fOffset *uint64
+}
+
+// Read implements the io.Reader interface.
+func (i *ringFIO) Read(b []byte) (int, error) {
+	sqe := i.r.Sqe()
+	i.r.sq.Entries[sqe].Reset()
+	i.r.sq.Entries[sqe].Opcode = ReadFixed
+	i.r.sq.Entries[sqe].Fd = int32(i.f.Fd())
+	i.r.sq.Entries[sqe].UserData = i.r.Idx()
+	i.r.sq.Entries[sqe].Len = uint32(len(b))
+
+	return 0, nil
+}
+
+// Write implements the io.Writer interface.
+func (i *ringFIO) Write(b []byte) (int, error) {
+	return 0, nil
+}
+
+// WriteAt implements the io.WriterAt interface.
+func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
+	return 0, nil
+}
+
+// Close implements the io.Closer interface.
+func (i *ringFIO) Close() error {
+	return i.f.Close()
 }

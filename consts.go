@@ -88,8 +88,8 @@ const (
 	 * io_uring_enter(2) flags
 	 */
 
-	// EnterGetevents ...
-	EnterGetevents uint = (1 << 0)
+	// EnterGetEvents ...
+	EnterGetEvents uint = (1 << 0)
 	// EnterSQWakeup ...
 	EnterSQWakeup uint = (1 << 1)
 

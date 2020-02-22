@@ -10,7 +10,6 @@ import (
 )
 
 func TestEnter(t *testing.T) {
-	t.Skip()
 	p := Params{}
 	fd, err := Setup(1024, &p)
 	if err != nil {
