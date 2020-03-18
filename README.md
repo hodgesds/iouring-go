@@ -1,3 +1,5 @@
+[![Gitter](https://badges.gitter.im/iouring-go/community.svg)](https://gitter.im/iouring-go/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
 # `io_uring` Go 
 This library adds support for [`io_uring`](https://kernel.dk/io_uring.pdf) for
 Go. This library is similar to [liburing](https://github.com/axboe/liburing).
