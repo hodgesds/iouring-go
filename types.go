@@ -1,9 +1,17 @@
 package iouring
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
+	"unsafe"
+
+	"github.com/pkg/errors"
+)
+
+var (
+	errEntryNotFound = errors.New("Completion entry not found")
 )
 
 // Params are used to configured a io uring.
@@ -107,6 +115,21 @@ type CompletionQueue struct {
 	ptr uintptr
 }
 
+func (c *CompletionQueue) EntryBy(idx uint64) (CompletionEntry, error) {
+	// TODO(hodges): This function is wrong but "should work", it
+	// should follow this pattern:
+	// To find the index of an event, the application must mask the current tail
+	// index with the size mask of the ring.
+	// ref: https://kernel.dk/io_uring.pdf
+
+	for _, entry := range c.Entries {
+		if entry.UserData == idx {
+			return entry, nil
+		}
+	}
+	return CompletionEntry{}, errEntryNotFound
+}
+
 // KernelTimespec is a kernel timespec.
 type KernelTimespec struct {
 	Sec  int64
@@ -128,14 +151,34 @@ type ringFIO struct {
 
 // Read implements the io.Reader interface.
 func (i *ringFIO) Read(b []byte) (int, error) {
-	sqe := i.r.Sqe()
-	i.r.sq.Entries[sqe].Reset()
-	i.r.sq.Entries[sqe].Opcode = ReadFixed
-	i.r.sq.Entries[sqe].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqe].UserData = i.r.Idx()
-	i.r.sq.Entries[sqe].Len = uint32(len(b))
+	sqeIdx := i.r.Sqe()
+	reqIdx := i.r.Idx()
 
-	return 0, nil
+	// Write barrier to SQ goes here.
+	i.r.sq.Entries[sqeIdx].Reset()
+	i.r.sq.Entries[sqeIdx].Opcode = ReadFixed
+	i.r.sq.Entries[sqeIdx].Fd = int32(i.f.Fd())
+	i.r.sq.Entries[sqeIdx].UserData = reqIdx
+	i.r.sq.Entries[sqeIdx].Len = uint32(len(b))
+	// This is probably a violation of the memory model
+	i.r.sq.Entries[sqeIdx].Addr = *(*uint64)(unsafe.Pointer(&b[0]))
+
+	// Submit the SQE by entering the ring.
+	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	cqe, err := i.r.cq.EntryBy(reqIdx)
+	if err != nil {
+		return 0, err
+	}
+	// Handle these errors better.
+	if cqe.Res < 0 {
+		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
+	}
+
+	return int(cqe.Res), nil
 }
 
 // Write implements the io.Writer interface.

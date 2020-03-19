@@ -2,6 +2,7 @@ package iouring
 
 import (
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -48,10 +49,7 @@ func New(size uint) (*Ring, error) {
 
 // Enter is used to enter the ring.
 func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
-	if err := Enter(r.fd, toSubmit, minComplete, flags, sigset); err != nil {
-		return err
-	}
-	return nil
+	return Enter(r.fd, toSubmit, minComplete, flags, sigset)
 }
 
 // Close is used to close the ring.
@@ -129,24 +127,28 @@ func (r *Ring) SubmitTail() int {
 
 // Sqe returns the offset of the next available SQE.
 func (r *Ring) Sqe() int {
+getIdx:
 	v := atomic.AddUint32(r.sq.Head, 1)
 	// If the end of the slice is reached then allocate the first postion
 	if v == r.sq.Size {
 		if !atomic.CompareAndSwapUint32(r.sq.Head, v, 0) {
-			return r.Sqe()
+			runtime.Gosched()
+			goto getIdx
 		}
-		tail := r.SubmitTail()
-		// If there's something at the start then enter the ring first.
-		if tail != 0 {
-			return 0
-		}
-		_ = r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-		return 0 // or r.AllocateSqe()?
 	}
-	return int(v)
+	// If the submit tail is beyond the current position then the offset is
+	// valid.
+	if atomic.LoadUint32(r.sq.Tail) != v {
+		return int(v)
+	}
+	// Otherwise enter the ring to clear the current submissions.
+	_ = r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+	runtime.Gosched()
+	goto getIdx
 }
 
-// Idx returns an id for a
+// Idx returns an id for a SQEs, it is a monotonically increasing value (until
+// uint64 wrapping).
 func (r *Ring) Idx() uint64 {
 	return atomic.AddUint64(r.idx, 1)
 }
