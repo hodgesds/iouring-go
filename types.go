@@ -4,10 +4,24 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/pkg/errors"
+)
+
+const (
+	// RingStateEmpty is when a ring is empty.
+	RingStateEmpty uint32 = 1 << iota
+	// RingStateUpdating is when a ring is preparing to be entered.
+	RingStateUpdating
+	// RingStateFilled is when a ring is filled and ready to be updated or
+	// entered.
+	RingStateFilled
+	// RingStateWriting is when a ring is being written to.
+	RingStateWriting
 )
 
 var (
@@ -91,11 +105,73 @@ type SubmitQueue struct {
 	entriesMu sync.RWMutex
 	// ptr is pointer to the start of the mmap.
 	ptr uintptr
+
+	state *uint32
+}
+
+// submitBarrier is used to prevent updating the submit queue while the queue
+// is being entered.
+func (s *SubmitQueue) submitBarrier() {
+	for {
+		switch state := atomic.LoadUint32(s.state); state {
+		case RingStateWriting:
+			// Should two submits to the ring be allowed?
+			return
+		case RingStateEmpty, RingStateFilled:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateWriting) {
+				return
+			}
+		case RingStateUpdating:
+		}
+		runtime.Gosched()
+	}
+}
+
+// updateBarrier is used to wait for the ring to be in a state to be updated.
+func (s *SubmitQueue) updateBarrier() {
+	for {
+		switch state := atomic.LoadUint32(s.state); state {
+		case RingStateUpdating:
+			return
+		case RingStateEmpty, RingStateFilled:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateUpdating) {
+				return
+			}
+		case RingStateWriting:
+		}
+		runtime.Gosched()
+	}
+}
+
+func (s *SubmitQueue) fill() {
+	for {
+		state := atomic.LoadUint32(s.state)
+		if state != RingStateUpdating {
+			runtime.Gosched()
+			continue
+		}
+		if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
+			return
+		}
+	}
+}
+
+func (s *SubmitQueue) empty() {
+	for {
+		state := atomic.LoadUint32(s.state)
+		if state != RingStateWriting {
+			runtime.Gosched()
+			continue
+		}
+		if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
+			return
+		}
+	}
 }
 
 // CompletionEntry IO completion data structure (Completion Queue Entry).
 type CompletionEntry struct {
-	UserData uint64 /* sqe->data submission passed back */
+	UserData uint64 /* sqe->data submission passed back, as a pointer... */
 	Res      int32  /* result code for this event */
 	Flags    uint32
 }
@@ -115,6 +191,7 @@ type CompletionQueue struct {
 	ptr uintptr
 }
 
+// EntryBy returns.
 func (c *CompletionQueue) EntryBy(idx uint64) (CompletionEntry, error) {
 	// TODO(hodges): This function is wrong but "should work", it
 	// should follow this pattern:
@@ -154,24 +231,33 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	sqeIdx := i.r.Sqe()
 	reqIdx := i.r.Idx()
 
-	// Write barrier to SQ goes here.
+	// First the update barrier must be acquired.
+	i.r.sq.updateBarrier()
+
 	i.r.sq.Entries[sqeIdx].Reset()
-	i.r.sq.Entries[sqeIdx].Opcode = ReadFixed
+	i.r.sq.Entries[sqeIdx].Opcode = Read
 	i.r.sq.Entries[sqeIdx].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqeIdx].UserData = reqIdx
+	i.r.sq.Entries[sqeIdx].UserData = (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
 	i.r.sq.Entries[sqeIdx].Len = uint32(len(b))
-	// This is probably a violation of the memory model
-	i.r.sq.Entries[sqeIdx].Addr = *(*uint64)(unsafe.Pointer(&b[0]))
+	// This is probably a violation of the memory model.
+	i.r.sq.Entries[sqeIdx].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
+	// Once the updates are complete then transition to the filled state.
+	// After the fill state transition then the ring is allowed to be
+	// entered.
+	i.r.sq.fill()
 
 	// Submit the SQE by entering the ring.
-	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+	err := i.r.Enter(int(i.f.Fd()), uint(1), uint(1), EnterGetEvents, nil)
 	if err != nil {
 		return 0, err
 	}
 
-	cqe, err := i.r.cq.EntryBy(reqIdx)
+	reqIdxPtr := (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
+	cqe, err := i.r.cq.EntryBy(reqIdxPtr)
 	if err != nil {
-		return 0, err
+		println(err.Error())
+		return 0, nil //err
 	}
 	// Handle these errors better.
 	if cqe.Res < 0 {

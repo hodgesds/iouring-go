@@ -47,15 +47,39 @@ const (
 	// SetupSQAFF sq_thread_cpu is valid
 	SetupSQAFF uint = (1 << 2)
 
-	Nop           Opcode = 0
-	Readv         Opcode = 1
-	Writev        Opcode = 2
-	Fsync         Opcode = 3
-	ReadFixed     Opcode = 4
-	WriteFixed    Opcode = 5
-	PollAdd       Opcode = 6
-	PollRemove    Opcode = 7
-	SyncFileRange Opcode = 8
+	Nop Opcode = iota
+	Readv
+	Writev
+	Fsync
+	ReadFixed
+	WriteFixed
+	PollAdd
+	PollRemove
+	SyncFileRange
+	SendMsg
+	RecvMsg
+	Timeout
+	TimeoutRemove
+	Accept
+	AsyncCancel
+	LinkTimeout
+	Connect
+	Fallocate
+	OpenAt
+	Close
+	FilesUpdate
+	Statx
+	Read
+	Write
+	Fadvise
+	Madvise
+	Send
+	Recv
+	Openat2
+	EpollCtl
+	Splice
+	ProvideBuffers
+	RemoveBuffers
 
 	OpSupported = (1 << 0)
 

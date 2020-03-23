@@ -38,6 +38,8 @@ func New(size uint) (*Ring, error) {
 		return nil, err
 	}
 	idx := uint64(0)
+	sqState := RingStateEmpty
+	sq.state = &sqState
 	return &Ring{
 		p:   &p,
 		fd:  fd,
@@ -48,8 +50,15 @@ func New(size uint) (*Ring, error) {
 }
 
 // Enter is used to enter the ring.
-func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
-	return Enter(r.fd, toSubmit, minComplete, flags, sigset)
+func (r *Ring) Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
+	// Acquire the submit barrier so that the ring can safely be entered.
+	r.sq.submitBarrier()
+	if err := Enter(fd, toSubmit, minComplete, flags, sigset); err != nil {
+		// TODO(hodgesds): are certain errors able to empty the ring?
+		return err
+	}
+	r.sq.empty()
+	return nil
 }
 
 // Close is used to close the ring.
@@ -138,11 +147,10 @@ getIdx:
 	}
 	// If the submit tail is beyond the current position then the offset is
 	// valid.
-	if atomic.LoadUint32(r.sq.Tail) != v {
+	tail := atomic.LoadUint32(r.sq.Tail)
+	if tail != v {
 		return int(v)
 	}
-	// Otherwise enter the ring to clear the current submissions.
-	_ = r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 	runtime.Gosched()
 	goto getIdx
 }
