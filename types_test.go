@@ -27,7 +27,8 @@ func TestRingFileReadWriter(t *testing.T) {
 	_, err = f.Seek(0, 0)
 	require.NoError(t, err)
 
-	rw := r.FileReadWriter(f)
+	rw, err := r.FileReadWriter(f)
+	require.NoError(t, err)
 
 	buf := make([]byte, len(content))
 	_, err = rw.Read(buf)

@@ -50,12 +50,21 @@ func New(size uint) (*Ring, error) {
 }
 
 // Enter is used to enter the ring.
-func (r *Ring) Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
+func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
 	// Acquire the submit barrier so that the ring can safely be entered.
 	r.sq.submitBarrier()
-	if err := Enter(fd, toSubmit, minComplete, flags, sigset); err != nil {
+	if r.sq.needWakeup() {
+		flags |= EnterSqWakeup
+	}
+	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
+	if err != nil {
 		// TODO(hodgesds): are certain errors able to empty the ring?
+		r.sq.fill()
 		return err
+	}
+	if uint(completed) < toSubmit {
+		r.sq.fill()
+		return nil
 	}
 	r.sq.empty()
 	return nil
@@ -162,9 +171,14 @@ func (r *Ring) Idx() uint64 {
 }
 
 // FileReadWriter returns an io.ReadWriter from an os.File that uses the ring.
-func (r *Ring) FileReadWriter(f *os.File) ReadWriteAtCloser {
-	return &ringFIO{
-		r: r,
-		f: f,
+func (r *Ring) FileReadWriter(f *os.File) (ReadWriteAtCloser, error) {
+	var offset uint64
+	if o, err := f.Seek(0, 0); err == nil {
+		offset = uint64(o)
 	}
+	return &ringFIO{
+		r:       r,
+		f:       f,
+		fOffset: &offset,
+	}, nil
 }

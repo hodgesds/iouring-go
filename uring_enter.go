@@ -10,8 +10,8 @@ import (
 )
 
 // Enter is used to submit to the queue.
-func Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
-	_, _, errno := syscall.Syscall6(
+func Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) (int, error) {
+	res, _, errno := syscall.Syscall6(
 		EnterSyscall,
 		uintptr(fd),
 		uintptr(toSubmit),
@@ -23,8 +23,8 @@ func Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sig
 	if errno < 0 {
 		var err error
 		err = errno
-		return err
+		return 0, err
 	}
 
-	return nil
+	return int(res), nil
 }

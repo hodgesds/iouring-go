@@ -26,15 +26,31 @@ const (
 	FeatSubMitStable   = (1 << 2)
 	FeatRwCurPos       = (1 << 3)
 	FeatCurPersonality = (1 << 4)
+)
 
+const (
 	/*
 	 * sqe->flags
 	 */
+	SqeFixedFileBit = iota
+	SqeIoDrainBit
+	SqeIoLinkBit
+	SqeIoHardlinkBit
+	SqeAsyncBit
+	SqeBufferSelectBit
 
 	// SqeFixedFile use fixed fileset
-	SqeFixedFile uint = (1 << 0)
-	// SqeIODrain issue after inflight IO
-	SqeIODrain uint = (1 << 1)
+	SqeFixedFile uint = (1 << SqeFixedFileBit)
+	// SqeIoDrain issue after inflight IO
+	SqeIoDrain uint = (1 << SqeIoDrainBit)
+	// SqeLink is used to link multiple SQEs.
+	SqeIoLink uint = (1 << SqeIoLinkBit)
+	// SqeIoHardlink is a hard link to multiple SQEs
+	SqeIoHardlink uint = (1 << SqeIoHardlinkBit)
+	// SqeAsync is use to specify async io.
+	SqeAsync uint = (1 << SqeAsyncBit)
+	// SqeBufferSelect is used to specify buffer select.
+	SqeBufferSelect uint = (1 << SqeBufferSelectBit)
 
 	/*
 	 * io_uring_setup() flags
@@ -46,6 +62,12 @@ const (
 	SetupSQPoll uint = (1 << 1)
 	// SetupSQAFF sq_thread_cpu is valid
 	SetupSQAFF uint = (1 << 2)
+	// SetupCqSize app defines CQ size
+	SetupCqSize uint = (1 << 3)
+	// SetupClamp clamp SQ/CQ ring sizes
+	SetupClamp uint = (1 << 4)
+	// SetupAttachWq  attach to existing wq
+	SetupAttachWq uint = (1 << 5)
 
 	Nop Opcode = iota
 	Readv
@@ -106,7 +128,7 @@ const (
 	 */
 
 	// SqNeedWakeup needs io_uring_enter wakeup
-	SqNeedWakeup uint = (1 << 0)
+	SqNeedWakeup uint32 = (1 << 0)
 
 	/*
 	 * io_uring_enter(2) flags
@@ -114,17 +136,17 @@ const (
 
 	// EnterGetEvents ...
 	EnterGetEvents uint = (1 << 0)
-	// EnterSQWakeup ...
-	EnterSQWakeup uint = (1 << 1)
+	// EnterSqWakeup ...
+	EnterSqWakeup uint = (1 << 1)
 
 	/*
 	 * io_uring_register(2) opcodes and arguments
 	 */
 
-	RegisterBuffers   = 0
-	UnregisterBuffers = 1
-	RegisterFiles     = 2
-	UnregisterFiles   = 3
-	RegisterEventfd   = 4
-	UnregisteREventfd = 5
+	RegRegisterBuffers   = 0
+	RegUnregisterBuffers = 1
+	RegRegisterFiles     = 2
+	RegUnregisterFiles   = 3
+	RegRegisterEventfd   = 4
+	RegUnregisteREventfd = 5
 )

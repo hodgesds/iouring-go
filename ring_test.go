@@ -48,6 +48,6 @@ func TestRingEnter(t *testing.T) {
 		}
 		count++
 	}
-	err = r.Enter(1, uint(count), uint(count), EnterGetEvents, nil)
+	err = r.Enter(uint(count), uint(count), EnterGetEvents, nil)
 	require.NoError(t, err)
 }

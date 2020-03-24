@@ -70,7 +70,7 @@ type SubmitEntry struct {
 	Flags    uint8  /* IOSQE_ flags */
 	Ioprio   uint16 /* ioprio for the request */
 	Fd       int32  /* file descriptor to do IO on */
-	Off      uint64 /* offset into file */
+	Offset   uint64 /* offset into file */
 	Addr     uint64 /* pointer to buffer or iovecs */
 	Len      uint32 /* buffer size or number of iovecs */
 	UFlags   uint32 /* union of various flags */
@@ -83,7 +83,7 @@ func (e *SubmitEntry) Reset() {
 	e.Flags = 0
 	e.Ioprio = 0
 	e.Fd = -1
-	e.Off = 0
+	e.Offset = 0
 	e.Addr = 0
 	e.Len = 0
 	e.UFlags = 0
@@ -107,6 +107,10 @@ type SubmitQueue struct {
 	ptr uintptr
 
 	state *uint32
+}
+
+func (s *SubmitQueue) needWakeup() bool {
+	return atomic.LoadUint32(s.Flags)&SqNeedWakeup != 0
 }
 
 // submitBarrier is used to prevent updating the submit queue while the queue
@@ -145,13 +149,14 @@ func (s *SubmitQueue) updateBarrier() {
 
 func (s *SubmitQueue) fill() {
 	for {
-		state := atomic.LoadUint32(s.state)
-		if state != RingStateUpdating {
+		switch state := atomic.LoadUint32(s.state); state {
+		case RingStateUpdating, RingStateWriting:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
+				return
+			}
+		default:
 			runtime.Gosched()
 			continue
-		}
-		if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
-			return
 		}
 	}
 }
@@ -203,6 +208,9 @@ func (c *CompletionQueue) EntryBy(idx uint64) (CompletionEntry, error) {
 		if entry.UserData == idx {
 			return entry, nil
 		}
+		//if entry.UserData != 0 {
+		//	fmt.Printf("%+v\n", entry)
+		//}
 	}
 	return CompletionEntry{}, errEntryNotFound
 }
@@ -239,8 +247,11 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	i.r.sq.Entries[sqeIdx].Fd = int32(i.f.Fd())
 	i.r.sq.Entries[sqeIdx].UserData = (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
 	i.r.sq.Entries[sqeIdx].Len = uint32(len(b))
+	//i.r.sq.Entries[sqeIdx].Flags = uint8(SqeIoDrain)
+	i.r.sq.Entries[sqeIdx].Offset = atomic.LoadUint64(i.fOffset)
 	// This is probably a violation of the memory model.
 	i.r.sq.Entries[sqeIdx].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	fmt.Printf("%+v\n", i.r.sq.Entries[sqeIdx])
 
 	// Once the updates are complete then transition to the filled state.
 	// After the fill state transition then the ring is allowed to be
@@ -248,18 +259,17 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	i.r.sq.fill()
 
 	// Submit the SQE by entering the ring.
-	err := i.r.Enter(int(i.f.Fd()), uint(1), uint(1), EnterGetEvents, nil)
+	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 	if err != nil {
 		return 0, err
 	}
 
 	reqIdxPtr := (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
 	cqe, err := i.r.cq.EntryBy(reqIdxPtr)
+	// Handle these errors better.
 	if err != nil {
-		println(err.Error())
 		return 0, nil //err
 	}
-	// Handle these errors better.
 	if cqe.Res < 0 {
 		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
 	}

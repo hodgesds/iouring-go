@@ -4,5 +4,6 @@ digraph G {
   Updating -> Updating
   Filled   -> Writing
   Filled   -> Updating
+  Writing  -> Filled
   Writing  -> Empty
 }
