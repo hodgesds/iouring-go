@@ -31,8 +31,9 @@ func New(size uint) (*Ring, error) {
 		return nil, err
 	}
 	var (
-		cq CompletionQueue
-		sq SubmitQueue
+		cq       CompletionQueue
+		sq       SubmitQueue
+		sqWrites uint32
 	)
 	if err := MmapRing(fd, &p, &sq, &cq); err != nil {
 		return nil, err
@@ -40,6 +41,7 @@ func New(size uint) (*Ring, error) {
 	idx := uint64(0)
 	sqState := RingStateEmpty
 	sq.state = &sqState
+	sq.writes = &sqWrites
 	return &Ring{
 		p:   &p,
 		fd:  fd,

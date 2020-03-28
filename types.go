@@ -106,11 +106,32 @@ type SubmitQueue struct {
 	// ptr is pointer to the start of the mmap.
 	ptr uintptr
 
+	// state is used for the state machine of the submit buffer for use as
+	// a memory barrier.
 	state *uint32
+	// writes is used to keep track of the number of concurrent writers.
+	writes *uint32
 }
 
 func (s *SubmitQueue) needWakeup() bool {
 	return atomic.LoadUint32(s.Flags)&SqNeedWakeup != 0
+}
+
+func (s *SubmitQueue) startWrite() {
+	atomic.AddUint32(s.writes, 1)
+}
+
+func (s *SubmitQueue) completeWrite() {
+	for {
+		writes := atomic.LoadUint32(s.writes)
+		if writes == 0 {
+			panic("invalid number of sq write completions")
+		}
+		if atomic.CompareAndSwapUint32(s.writes, writes, writes-1) {
+			return
+		}
+		runtime.Gosched()
+	}
 }
 
 // submitBarrier is used to prevent updating the submit queue while the queue
@@ -119,15 +140,14 @@ func (s *SubmitQueue) submitBarrier() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
 		case RingStateWriting:
-			// Should two submits to the ring be allowed?
 			return
 		case RingStateEmpty, RingStateFilled:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateWriting) {
 				return
 			}
 		case RingStateUpdating:
+			runtime.Gosched()
 		}
-		runtime.Gosched()
 	}
 }
 
@@ -150,14 +170,21 @@ func (s *SubmitQueue) updateBarrier() {
 func (s *SubmitQueue) fill() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateUpdating, RingStateWriting:
+		case RingStateUpdating:
+			// Wait for all writes to complete before filling.
+			if writes := atomic.LoadUint32(s.writes); writes > 0 {
+				runtime.Gosched()
+				continue
+			}
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
 				return
 			}
-		default:
-			runtime.Gosched()
-			continue
+		case RingStateWriting:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
+				return
+			}
 		}
+		runtime.Gosched()
 	}
 }
 
@@ -241,6 +268,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 
 	// First the update barrier must be acquired.
 	i.r.sq.updateBarrier()
+	i.r.sq.startWrite()
 
 	i.r.sq.Entries[sqeIdx].Reset()
 	i.r.sq.Entries[sqeIdx].Opcode = Read
@@ -253,6 +281,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	i.r.sq.Entries[sqeIdx].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	fmt.Printf("%+v\n", i.r.sq.Entries[sqeIdx])
 
+	i.r.sq.completeWrite()
 	// Once the updates are complete then transition to the filled state.
 	// After the fill state transition then the ring is allowed to be
 	// entered.
