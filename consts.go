@@ -143,10 +143,15 @@ const (
 	 * io_uring_register(2) opcodes and arguments
 	 */
 
-	RegRegisterBuffers   = 0
-	RegUnregisterBuffers = 1
-	RegRegisterFiles     = 2
-	RegUnregisterFiles   = 3
-	RegRegisterEventfd   = 4
-	RegUnregisteREventfd = 5
+	RegRegisterBuffers       = 0
+	RegUnregisterBuffers     = 1
+	RegRegisterFiles         = 2
+	RegUnregisterFiles       = 3
+	RegRegisterEventfd       = 4
+	RegUnregisteREventfd     = 5
+	RegRegisterFilesUpdate   = 6
+	RegRegisterEventFdAsync  = 7
+	RegRegisterProbe         = 8
+	RegRegisterPersonality   = 9
+	RegUnregisterPersonality = 10
 )
