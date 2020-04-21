@@ -158,10 +158,10 @@ func (r *Ring) ID() uint64 {
 }
 
 // FileReadWriter returns an io.ReadWriter from an os.File that uses the ring.
-func (r *Ring) FileReadWriter(f *os.File) (ReadWriteAtCloser, error) {
-	var offset uint64
+func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
+	var offset int64
 	if o, err := f.Seek(0, 0); err == nil {
-		offset = uint64(o)
+		offset = int64(o)
 	}
 	return &ringFIO{
 		r:       r,

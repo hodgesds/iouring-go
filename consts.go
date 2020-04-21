@@ -2,6 +2,8 @@
 
 package iouring
 
+import "io"
+
 // See uapi/linux/io_uring.h
 
 // Opcode is an opcode for the ring.
@@ -155,3 +157,11 @@ const (
 	RegRegisterPersonality   = 9
 	RegUnregisterPersonality = 10
 )
+
+// ReadWriteSeekerCloser is a ReadWriteCloser and ReadWriteSeeker.
+type ReadWriteSeekerCloser interface {
+	io.Reader
+	io.Writer
+	io.Seeker
+	io.Closer
+}

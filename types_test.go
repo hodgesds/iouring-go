@@ -87,12 +87,7 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 
 	require.NoError(t, f.Sync())
 
-	_, err = f.Seek(0, 0)
-	require.NoError(t, err)
-
-	// Seek from the file breaks the ReadWriter because the offset is
-	// stored internally on the ReadWriter, so create a new one.
-	rw, err = r.FileReadWriter(f)
+	_, err = rw.Seek(0, 0)
 	require.NoError(t, err)
 
 	buf := make([]byte, len(content))

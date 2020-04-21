@@ -276,7 +276,7 @@ type ReadWriteAtCloser interface {
 type ringFIO struct {
 	r       *Ring
 	f       *os.File
-	fOffset *uint64
+	fOffset *int64
 }
 
 // Read implements the io.Reader interface.
@@ -297,7 +297,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
 	i.r.sq.Entries[sqeID].Len = uint32(len(b))
 	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeID].Offset = atomic.LoadUint64(i.fOffset)
+	i.r.sq.Entries[sqeID].Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
 	// reads to work we have to pass the address of the read buffer to the
@@ -350,7 +350,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
 	i.r.sq.Entries[sqeID].Len = uint32(len(b))
 	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeID].Offset = atomic.LoadUint64(i.fOffset)
+	i.r.sq.Entries[sqeID].Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
 	// writes to work we have to pass the address of the write buffer to
@@ -394,4 +394,25 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 // Close implements the io.Closer interface.
 func (i *ringFIO) Close() error {
 	return i.f.Close()
+}
+
+// Seek implements the io.Seeker interface.
+func (i *ringFIO) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		atomic.StoreInt64(i.fOffset, offset)
+		return 0, nil
+	case io.SeekCurrent:
+		atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+offset)
+		return 0, nil
+	case io.SeekEnd:
+		stat, err := i.f.Stat()
+		if err != nil {
+			return 0, err
+		}
+		atomic.StoreInt64(i.fOffset, stat.Size()-offset)
+		return 0, nil
+	default:
+		return 0, errors.New("unknown whence")
+	}
 }
