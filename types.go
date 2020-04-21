@@ -248,10 +248,13 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	tail := atomic.LoadUint32(c.Tail)
 	mask := atomic.LoadUint32(c.Mask)
 
+	skipped := uint32(0)
 	for i := head & mask; i < tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
+			atomic.StoreUint32(c.Head, i-skipped+1)
 			return &c.Entries[i], nil
 		}
+		skipped++
 	}
 
 	return nil, errEntryNotFound
@@ -282,35 +285,36 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	// TODO: Should nosplit be used in this case? The goal is to avoid
 	// stack reallocations which could mess up some of the unsafe pointer
 	// use.
-
-	sqeId := i.r.Sqe() // index in the submit queue
-	reqId := i.r.Id()
+	sqeID := i.r.Sqe() // index in the submit queue
+	reqID := i.r.ID()
 
 	// First the update barrier must be acquired.
 	i.r.sq.updateBarrier()
 	i.r.sq.startWrite()
 
-	i.r.sq.Entries[sqeId].Opcode = ReadFixed
-	i.r.sq.Entries[sqeId].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqeId].Len = uint32(len(b))
-	i.r.sq.Entries[sqeId].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeId].Offset = atomic.LoadUint64(i.fOffset)
+	i.r.sq.Entries[sqeID].Reset()
+	i.r.sq.Entries[sqeID].Opcode = ReadFixed
+	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
+	i.r.sq.Entries[sqeID].Len = uint32(len(b))
+	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
+	i.r.sq.Entries[sqeID].Offset = atomic.LoadUint64(i.fOffset)
 
 	// This is probably a violation of the memory model, but in order for
 	// reads to work we have to pass the address of the read buffer to the
 	// SQE.
-	i.r.sq.Entries[sqeId].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	i.r.sq.Entries[sqeID].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.
-	i.r.sq.Entries[sqeId].UserData = reqId
+	i.r.sq.Entries[sqeID].UserData = reqID
 
-	i.r.sq.completeWrite(uint32(sqeId))
+	i.r.sq.completeWrite(uint32(sqeID))
 	// Once the updates are complete then transition to the filled state.
 	// After the fill state transition then the ring is allowed to be
 	// entered.
 	i.r.sq.fill()
 
-	*i.r.sq.Tail = uint32(1)
+	// Should this be in fill?
+	atomic.AddUint32(i.r.sq.Tail, 1)
 
 	// Submit the SQE by entering the ring.
 	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
@@ -319,10 +323,11 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	}
 
 	// Use EntryBy to return the CQE by the "request" id in UserData.
-	cqe, err := i.r.cq.EntryBy(reqId)
+	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
 		return 0, err
 	}
+
 	if cqe.Res < 0 {
 		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
 	}
@@ -331,8 +336,54 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 }
 
 // Write implements the io.Writer interface.
+//go:nosplit
 func (i *ringFIO) Write(b []byte) (int, error) {
-	return 0, nil
+	sqeID := i.r.Sqe() // index in the submit queue
+	reqID := i.r.ID()
+
+	// First the update barrier must be acquired.
+	i.r.sq.updateBarrier()
+	i.r.sq.startWrite()
+
+	i.r.sq.Entries[sqeID].Reset()
+	i.r.sq.Entries[sqeID].Opcode = WriteFixed
+	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
+	i.r.sq.Entries[sqeID].Len = uint32(len(b))
+	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
+	i.r.sq.Entries[sqeID].Offset = atomic.LoadUint64(i.fOffset)
+
+	// This is probably a violation of the memory model, but in order for
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	i.r.sq.Entries[sqeID].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	i.r.sq.Entries[sqeID].UserData = reqID
+
+	i.r.sq.completeWrite(uint32(sqeID))
+	// Once the updates are complete then transition to the filled state.
+	// After the fill state transition then the ring is allowed to be
+	// entered.
+	i.r.sq.fill()
+
+	// Should this be in fill?
+	atomic.AddUint32(i.r.sq.Tail, 1)
+
+	// Submit the SQE by entering the ring.
+	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+	if err != nil {
+		return 0, err
+	}
+	// Use EntryBy to return the CQE by the "request" id in UserData.
+	cqe, err := i.r.cq.EntryBy(reqID)
+	if err != nil {
+		return 0, err
+	}
+	if cqe.Res < 0 {
+		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
+	}
+
+	return int(cqe.Res), nil
 }
 
 // WriteAt implements the io.WriterAt interface.

@@ -151,9 +151,9 @@ func (r *Ring) Sqe() int {
 	return int(tail&*r.sq.Mask) - 1
 }
 
-// Id returns an id for a SQEs, it is a monotonically increasing value (until
+// ID returns an id for a SQEs, it is a monotonically increasing value (until
 // uint64 wrapping).
-func (r *Ring) Id() uint64 {
+func (r *Ring) ID() uint64 {
 	return atomic.AddUint64(r.idx, 1)
 }
 
