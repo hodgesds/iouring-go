@@ -353,8 +353,8 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	i.r.sq.Entries[sqeID].Offset = atomic.LoadUint64(i.fOffset)
 
 	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
+	// writes to work we have to pass the address of the write buffer to
+	// the SQE.
 	i.r.sq.Entries[sqeID].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.
