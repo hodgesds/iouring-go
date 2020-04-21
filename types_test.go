@@ -31,9 +31,9 @@ func TestRingFileReadWriter(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := make([]byte, len(content))
-	_, err = rw.Read(buf)
+	n, err := rw.Read(buf)
 	require.NoError(t, err)
-	//require.True(t, n > 0)
-	require.Contains(t, content, buf)
+	require.True(t, n > 0)
+	require.Equal(t, content, buf)
 	require.NoError(t, rw.Close())
 }

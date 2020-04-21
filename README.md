@@ -32,3 +32,9 @@ final and this library is far from ready for general use.
 
 ## Other References
 https://cor3ntin.github.io/posts/iouring/
+
+https://github.com/google/vectorio
+
+https://github.com/shuveb/io_uring-by-example/blob/master/02_cat_uring/main.c
+
+https://golang.org/pkg/syscall/#Iovec

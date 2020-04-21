@@ -76,7 +76,7 @@ type fileRegistry struct {
 	mu     sync.RWMutex
 	ringFd int
 	f      []int
-	fID    map[int]int
+	fID    map[int]int /* map of fd to offset */
 }
 
 func NewFileRegistry(ringFd int) FileRegistry {

@@ -2,7 +2,6 @@ package iouring
 
 import (
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -147,28 +146,14 @@ func (r *Ring) SubmitTail() int {
 
 // Sqe returns the offset of the next available SQE.
 func (r *Ring) Sqe() int {
-getIdx:
-	v := atomic.AddUint32(r.sq.Head, 1)
-	// If the end of the slice is reached then allocate the first postion
-	if v == r.sq.Size {
-		if !atomic.CompareAndSwapUint32(r.sq.Head, v, 0) {
-			runtime.Gosched()
-			goto getIdx
-		}
-	}
-	// If the submit tail is beyond the current position then the offset is
-	// valid.
-	tail := atomic.LoadUint32(r.sq.Tail)
-	if tail != v {
-		return int(v)
-	}
-	runtime.Gosched()
-	goto getIdx
+	// TODO: handle wrap and head==tail
+	tail := atomic.AddUint32(r.sq.Tail, 1)
+	return int(tail&*r.sq.Mask) - 1
 }
 
-// Idx returns an id for a SQEs, it is a monotonically increasing value (until
+// Id returns an id for a SQEs, it is a monotonically increasing value (until
 // uint64 wrapping).
-func (r *Ring) Idx() uint64 {
+func (r *Ring) Id() uint64 {
 	return atomic.AddUint64(r.idx, 1)
 }
 

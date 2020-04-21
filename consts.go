@@ -120,8 +120,8 @@ const (
 	SqRingOffset uint64 = 0
 	// CqRingOffset is the offset of the completion queue.
 	CqRingOffset uint64 = 0x8000000
-	// SqeSOffset is the offset of the submission queue entries.
-	SqeSOffset uint64 = 0x10000000
+	// SqeRingOffset is the offset of the submission queue entries.
+	SqeRingOffset uint64 = 0x10000000
 
 	/*
 	 * sq_ring->flags

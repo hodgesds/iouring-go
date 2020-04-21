@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -73,9 +72,9 @@ type SubmitEntry struct {
 	Offset   uint64 /* offset into file */
 	Addr     uint64 /* pointer to buffer or iovecs */
 	Len      uint32 /* buffer size or number of iovecs */
-	UFlags   uint32 /* union of various flags */
-	UserData uint64 /* data to be passed back at completion time */
-	BufIndex uint16 /* index into fixed buffers, if used */
+	UFlags   int32
+	UserData uint64
+	Anon0    [24]byte /* extra padding */
 }
 
 // Reset is used to reset an SubmitEntry.
@@ -88,7 +87,6 @@ func (e *SubmitEntry) Reset() {
 	e.Len = 0
 	e.UFlags = 0
 	e.UserData = 0
-	e.BufIndex = 0
 }
 
 // SubmitQueue represents the submit queue ring buffer.
@@ -101,16 +99,22 @@ type SubmitQueue struct {
 	Dropped *uint32
 
 	// Entries must never be resized, it is mmap'd.
-	Entries   []SubmitEntry
-	entriesMu sync.RWMutex
+	Entries []SubmitEntry
 	// ptr is pointer to the start of the mmap.
 	ptr uintptr
 
 	// state is used for the state machine of the submit buffer for use as
 	// a memory barrier.
 	state *uint32
-	// writes is used to keep track of the number of concurrent writers.
+	// writes is used to keep track of the number of concurrent writers to
+	// the ring.
 	writes *uint32
+}
+
+func (s *SubmitQueue) reset() {
+	for _, entry := range s.Entries {
+		entry.Reset()
+	}
 }
 
 func (s *SubmitQueue) needWakeup() bool {
@@ -121,14 +125,18 @@ func (s *SubmitQueue) startWrite() {
 	atomic.AddUint32(s.writes, 1)
 }
 
-func (s *SubmitQueue) completeWrite() {
+// completeWrite is used to signal that an entry in the map has been fully
+// written.
+func (s *SubmitQueue) completeWrite(idx uint32) {
 	for {
 		writes := atomic.LoadUint32(s.writes)
 		if writes == 0 {
 			panic("invalid number of sq write completions")
 		}
 		if atomic.CompareAndSwapUint32(s.writes, writes, writes-1) {
-			return
+			if atomic.CompareAndSwapUint32(s.Tail, atomic.LoadUint32(s.Tail), idx) {
+				return
+			}
 		}
 		runtime.Gosched()
 	}
@@ -140,6 +148,7 @@ func (s *SubmitQueue) submitBarrier() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
 		case RingStateWriting:
+			// Concurrent writes are allowed.
 			return
 		case RingStateEmpty, RingStateFilled:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateWriting) {
@@ -188,15 +197,20 @@ func (s *SubmitQueue) fill() {
 	}
 }
 
+// empty is used for transitioning the ring state after all submitted entries
+// have been complete.
 func (s *SubmitQueue) empty() {
 	for {
-		state := atomic.LoadUint32(s.state)
-		if state != RingStateWriting {
-			runtime.Gosched()
-			continue
-		}
-		if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
-			return
+		switch state := atomic.LoadUint32(s.state); state {
+		case RingStateWriting:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
+				return
+			}
+		default:
+			panic(fmt.Sprintf(
+				"can not transition to empty state from state %v",
+				state,
+			))
 		}
 	}
 }
@@ -217,29 +231,30 @@ type CompletionQueue struct {
 	Overflow *uint32
 
 	// Entries must never be resized, it is mmap'd.
-	Entries   []CompletionEntry
-	entriesMu sync.RWMutex
-	// ptr is pointer to the start of the mmap.
-	ptr uintptr
+	Entries []CompletionEntry
+	ptr     uintptr
 }
 
-// EntryBy returns.
-func (c *CompletionQueue) EntryBy(idx uint64) (CompletionEntry, error) {
+// EntryBy returns a CompletionEntry by comparing the user data, this
+// should be called after the ring has been entered.
+func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	// TODO(hodges): This function is wrong but "should work", it
 	// should follow this pattern:
 	// To find the index of an event, the application must mask the current tail
 	// index with the size mask of the ring.
 	// ref: https://kernel.dk/io_uring.pdf
 
-	for _, entry := range c.Entries {
-		if entry.UserData == idx {
-			return entry, nil
+	head := atomic.LoadUint32(c.Head)
+	tail := atomic.LoadUint32(c.Tail)
+	mask := atomic.LoadUint32(c.Mask)
+
+	for i := head & mask; i < tail&mask; i++ {
+		if c.Entries[i].UserData == userData {
+			return &c.Entries[i], nil
 		}
-		//if entry.UserData != 0 {
-		//	fmt.Printf("%+v\n", entry)
-		//}
 	}
-	return CompletionEntry{}, errEntryNotFound
+
+	return nil, errEntryNotFound
 }
 
 // KernelTimespec is a kernel timespec.
@@ -262,30 +277,40 @@ type ringFIO struct {
 }
 
 // Read implements the io.Reader interface.
+//go:nosplit
 func (i *ringFIO) Read(b []byte) (int, error) {
-	sqeIdx := i.r.Sqe()
-	reqIdx := i.r.Idx()
+	// TODO: Should nosplit be used in this case? The goal is to avoid
+	// stack reallocations which could mess up some of the unsafe pointer
+	// use.
+
+	sqeId := i.r.Sqe() // index in the submit queue
+	reqId := i.r.Id()
 
 	// First the update barrier must be acquired.
 	i.r.sq.updateBarrier()
 	i.r.sq.startWrite()
 
-	i.r.sq.Entries[sqeIdx].Reset()
-	i.r.sq.Entries[sqeIdx].Opcode = Read
-	i.r.sq.Entries[sqeIdx].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqeIdx].UserData = (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
-	i.r.sq.Entries[sqeIdx].Len = uint32(len(b))
-	//i.r.sq.Entries[sqeIdx].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeIdx].Offset = atomic.LoadUint64(i.fOffset)
-	// This is probably a violation of the memory model.
-	i.r.sq.Entries[sqeIdx].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	fmt.Printf("%+v\n", i.r.sq.Entries[sqeIdx])
+	i.r.sq.Entries[sqeId].Opcode = ReadFixed
+	i.r.sq.Entries[sqeId].Fd = int32(i.f.Fd())
+	i.r.sq.Entries[sqeId].Len = uint32(len(b))
+	i.r.sq.Entries[sqeId].Flags = uint8(SqeIoDrain)
+	i.r.sq.Entries[sqeId].Offset = atomic.LoadUint64(i.fOffset)
 
-	i.r.sq.completeWrite()
+	// This is probably a violation of the memory model, but in order for
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	i.r.sq.Entries[sqeId].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	i.r.sq.Entries[sqeId].UserData = reqId
+
+	i.r.sq.completeWrite(uint32(sqeId))
 	// Once the updates are complete then transition to the filled state.
 	// After the fill state transition then the ring is allowed to be
 	// entered.
 	i.r.sq.fill()
+
+	*i.r.sq.Tail = uint32(1)
 
 	// Submit the SQE by entering the ring.
 	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
@@ -293,11 +318,10 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	reqIdxPtr := (uint64)(uintptr(unsafe.Pointer(&reqIdx)))
-	cqe, err := i.r.cq.EntryBy(reqIdxPtr)
-	// Handle these errors better.
+	// Use EntryBy to return the CQE by the "request" id in UserData.
+	cqe, err := i.r.cq.EntryBy(reqId)
 	if err != nil {
-		return 0, nil //err
+		return 0, err
 	}
 	if cqe.Res < 0 {
 		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
@@ -313,7 +337,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 
 // WriteAt implements the io.WriterAt interface.
 func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
-	return 0, nil
+	return 0, errors.New("not implemented")
 }
 
 // Close implements the io.Closer interface.

@@ -14,7 +14,7 @@ var (
 	errInvalidEntries = errors.New("entries must be a power of 2 from 1 to 4096, inclusive")
 	uint32Size        = unsafe.Sizeof(uint32(0))
 	cqeSize           = unsafe.Sizeof(CompletionEntry{})
-	seSize            = unsafe.Sizeof(SubmitEntry{})
+	sqeSize           = unsafe.Sizeof(SubmitEntry{})
 )
 
 // Setup is used to setup a io_uring using the io_uring_setup syscall.
@@ -68,6 +68,41 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 		err = errno
 		return errors.Wrap(err, "failed to mmap sq ring")
 	}
+	sq.ptr = sqPtr
+
+	// Conversion of a uintptr back to Pointer is not valid in general,
+	// except for:
+	// 3) Conversion of a Pointer to a uintptr and back, with arithmetic.
+
+	// Go vet doesn't like this so it's probably not valid.
+	sq.Head = (*uint32)(unsafe.Pointer(sq.ptr + uintptr(p.SqOffset.Head)))
+	sq.Tail = (*uint32)(unsafe.Pointer(sq.ptr + uintptr(p.SqOffset.Tail)))
+	sq.Mask = (*uint32)(unsafe.Pointer(sq.ptr + uintptr(p.SqOffset.RingMask)))
+	sq.Flags = (*uint32)(unsafe.Pointer(sq.ptr + uintptr(p.SqOffset.Flags)))
+	sq.Dropped = (*uint32)(unsafe.Pointer(sq.ptr + uintptr(p.SqOffset.Dropped)))
+
+	// Map the sqe ring.
+	sqePtr, _, errno := syscall.Syscall6(
+		syscall.SYS_MMAP,
+		uintptr(0),
+		uintptr(uint(p.SqEntries)*uint(sqeSize)),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_SHARED|syscall.MAP_POPULATE,
+		uintptr(fd),
+		uintptr(SqeRingOffset),
+	)
+	if errno != 0 {
+		err = errno
+		return errors.Wrap(err, "failed to mmap sq ring")
+	}
+
+	// Making mmap'd slices is annoying.
+	sq.Entries = *(*[]SubmitEntry)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(sqePtr),
+		Len:  int(p.SqEntries),
+		Cap:  int(p.SqEntries),
+	}))
+
 	if singleMmap {
 		cqPtr = sqPtr
 	} else {
@@ -86,34 +121,16 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 		}
 	}
 
-	// Conversion of a uintptr back to Pointer is not valid in general,
-	// except for:
-	// 3) Conversion of a Pointer to a uintptr and back, with arithmetic.
-	sq.Head = (*uint32)(unsafe.Pointer(sqPtr + uintptr(p.SqOffset.Head)))
-	sq.Tail = (*uint32)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Tail))))
-	sq.Mask = (*uint32)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.RingMask))))
-	sq.Flags = (*uint32)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Flags))))
-	sq.Dropped = (*uint32)(unsafe.Pointer(uintptr(uint(sqPtr) + uint(p.SqOffset.Dropped))))
-
-	// Making mmap'd slices is annoying.
-	sq.Entries = *(*[]SubmitEntry)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(uint(sqPtr) + uint(p.SqOffset.RingEntries)),
-		Len:  int(p.SqEntries),
-		Cap:  int(p.SqEntries),
-	}))
-
 	cq.Head = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Head))))
 	cq.Tail = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Tail))))
 	cq.Mask = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.RingMask))))
 	cq.Overflow = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Overflow))))
 
 	cq.Entries = *(*[]CompletionEntry)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(uint(cqPtr) + uint(p.CqOffset.RingEntries)),
+		Data: uintptr(uint(cqPtr) + uint(p.CqOffset.Cqes)),
 		Len:  int(p.CqEntries),
 		Cap:  int(p.CqEntries),
 	}))
 
-	cq.ptr = cqPtr
-	sq.ptr = sqPtr
 	return nil
 }
