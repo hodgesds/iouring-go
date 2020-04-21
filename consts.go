@@ -42,17 +42,17 @@ const (
 	SqeBufferSelectBit
 
 	// SqeFixedFile use fixed fileset
-	SqeFixedFile uint = (1 << SqeFixedFileBit)
+	SqeFixedFile uint8 = (1 << SqeFixedFileBit)
 	// SqeIoDrain issue after inflight IO
-	SqeIoDrain uint = (1 << SqeIoDrainBit)
+	SqeIoDrain uint8 = (1 << SqeIoDrainBit)
 	// SqeLink is used to link multiple SQEs.
-	SqeIoLink uint = (1 << SqeIoLinkBit)
+	SqeIoLink uint8 = (1 << SqeIoLinkBit)
 	// SqeIoHardlink is a hard link to multiple SQEs
-	SqeIoHardlink uint = (1 << SqeIoHardlinkBit)
+	SqeIoHardlink uint8 = (1 << SqeIoHardlinkBit)
 	// SqeAsync is use to specify async io.
-	SqeAsync uint = (1 << SqeAsyncBit)
+	SqeAsync uint8 = (1 << SqeAsyncBit)
 	// SqeBufferSelect is used to specify buffer select.
-	SqeBufferSelect uint = (1 << SqeBufferSelectBit)
+	SqeBufferSelect uint8 = (1 << SqeBufferSelectBit)
 
 	/*
 	 * io_uring_setup() flags

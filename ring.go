@@ -20,6 +20,7 @@ type Ring struct {
 	sqMu   sync.RWMutex
 	sqPool sync.Pool
 	idx    *uint64
+	debug  bool
 }
 
 // New is used to create an iouring.Ring.
@@ -69,6 +70,10 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	}
 	r.sq.empty()
 	return nil
+}
+
+func (r *Ring) canEnter() bool {
+	return atomic.LoadUint32(r.sq.Head) != atomic.LoadUint32(r.sq.Tail)
 }
 
 // Close is used to close the ring.

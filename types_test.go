@@ -30,11 +30,18 @@ func TestRingFileReadWriterRead(t *testing.T) {
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	buf := make([]byte, len(content))
+	buf := make([]byte, len(content)/2)
 	n, err := rw.Read(buf)
 	require.NoError(t, err)
 	require.True(t, n > 0)
-	require.Equal(t, content, buf)
+	require.Subset(t, content, buf)
+
+	buf = make([]byte, len(content)/2)
+	n, err = rw.Read(buf)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+	require.Subset(t, content, buf)
+
 	require.NoError(t, rw.Close())
 }
 
@@ -90,10 +97,17 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 	_, err = rw.Seek(0, 0)
 	require.NoError(t, err)
 
-	buf := make([]byte, len(content))
+	buf := make([]byte, len(content)/2)
 	n, err := rw.Read(buf)
 	require.NoError(t, err)
 	require.True(t, n > 0)
-	require.Equal(t, content, buf)
+	require.Contains(t, content, buf)
+
+	buf = make([]byte, len(content)/2)
+	n, err = rw.Read(buf)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+	require.Contains(t, content, buf)
+
 	require.NoError(t, rw.Close())
 }

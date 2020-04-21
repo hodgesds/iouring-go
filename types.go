@@ -79,6 +79,7 @@ type SubmitEntry struct {
 
 // Reset is used to reset an SubmitEntry.
 func (e *SubmitEntry) Reset() {
+	e.Opcode = Nop
 	e.Flags = 0
 	e.Ioprio = 0
 	e.Fd = -1
@@ -111,7 +112,8 @@ type SubmitQueue struct {
 	writes *uint32
 }
 
-func (s *SubmitQueue) reset() {
+// Reset is used to reset all entries.
+func (s *SubmitQueue) Reset() {
 	for _, entry := range s.Entries {
 		entry.Reset()
 	}
@@ -186,6 +188,7 @@ func (s *SubmitQueue) fill() {
 				continue
 			}
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
+				atomic.AddUint32(s.Tail, 1)
 				return
 			}
 		case RingStateWriting:
@@ -217,7 +220,7 @@ func (s *SubmitQueue) empty() {
 
 // CompletionEntry IO completion data structure (Completion Queue Entry).
 type CompletionEntry struct {
-	UserData uint64 /* sqe->data submission passed back, as a pointer... */
+	UserData uint64 /* sqe->data submission data passed back */
 	Res      int32  /* result code for this event */
 	Flags    uint32
 }
@@ -248,13 +251,13 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	tail := atomic.LoadUint32(c.Tail)
 	mask := atomic.LoadUint32(c.Mask)
 
-	skipped := uint32(0)
+	// TODO: How should the head of the ring be updated with concurrent
+	// callers?
 	for i := head & mask; i < tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
-			atomic.StoreUint32(c.Head, i-skipped+1)
+			atomic.StoreUint32(c.Head, i+1)
 			return &c.Entries[i], nil
 		}
-		skipped++
 	}
 
 	return nil, errEntryNotFound
@@ -313,24 +316,31 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	// entered.
 	i.r.sq.fill()
 
-	// Should this be in fill?
-	atomic.AddUint32(i.r.sq.Tail, 1)
-
 	// Submit the SQE by entering the ring.
-	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-	if err != nil {
-		return 0, err
+	if i.r.debug {
+		fmt.Printf("sq (pre) head: %v tail %v\nentries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
+		fmt.Printf("cq (pre) head: %v tail %v\nentries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+	}
+	if i.r.canEnter() {
+		err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
+	if i.r.debug {
+		fmt.Printf("sq head: %v tail %v\nentries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
+		fmt.Printf("cq  head: %v tail %v\nentries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+	}
 	if err != nil {
 		return 0, err
 	}
-
 	if cqe.Res < 0 {
 		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
 	}
+	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 
 	return int(cqe.Res), nil
 }
@@ -366,14 +376,14 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	// entered.
 	i.r.sq.fill()
 
-	// Should this be in fill?
-	atomic.AddUint32(i.r.sq.Tail, 1)
-
 	// Submit the SQE by entering the ring.
-	err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-	if err != nil {
-		return 0, err
+	if i.r.canEnter() {
+		err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
+		if err != nil {
+			return 0, err
+		}
 	}
+
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
@@ -382,6 +392,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	if cqe.Res < 0 {
 		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
 	}
+	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 
 	return int(cqe.Res), nil
 }
