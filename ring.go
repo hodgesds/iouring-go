@@ -182,7 +182,8 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 			// state of the ring and decrement the active writes
 			// counter.
 			return &r.sq.Entries[tail], func() {
-				r.sq.completeWrite(tail)
+				r.sq.completeWrite()
+				r.sq.fill()
 			}
 		}
 	}

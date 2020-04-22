@@ -129,7 +129,7 @@ func (s *SubmitQueue) startWrite() {
 
 // completeWrite is used to signal that an entry in the map has been fully
 // written.
-func (s *SubmitQueue) completeWrite(idx uint32) {
+func (s *SubmitQueue) completeWrite() {
 	for {
 		writes := atomic.LoadUint32(s.writes)
 		if writes == 0 {
@@ -285,46 +285,7 @@ type ringFIO struct {
 	fOffset *int64
 }
 
-// Read implements the io.Reader interface.
-//go:nosplit
-func (i *ringFIO) Read(b []byte) (int, error) {
-	// TODO: Should nosplit be used in this case? The goal is to avoid
-	// stack reallocations which could mess up some of the unsafe pointer
-	// use.
-	sqeID := i.r.Sqe() // index in the submit queue
-	reqID := i.r.ID()
-
-	// First the update barrier must be acquired.
-	i.r.sq.updateBarrier()
-	i.r.sq.startWrite()
-
-	// TODO: Refactor this to use i.r.SubmitEntry
-	i.r.sq.Entries[sqeID].Reset()
-	i.r.sq.Entries[sqeID].Opcode = ReadFixed
-	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqeID].Len = uint32(len(b))
-	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeID].Offset = uint64(atomic.LoadInt64(i.fOffset))
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
-	i.r.sq.Entries[sqeID].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	i.r.sq.Entries[sqeID].UserData = reqID
-
-	i.r.sq.completeWrite(uint32(sqeID))
-	// Once the updates are complete then transition to the filled state.
-	// After the fill state transition then the ring is allowed to be
-	// entered.
-	i.r.sq.fill()
-
-	// Submit the SQE by entering the ring.
-	if i.r.debug {
-		fmt.Printf("sq (pre) head: %v tail %v\nentries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
-		fmt.Printf("cq (pre) head: %v tail %v\nentries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
-	}
+func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 	if i.r.canEnter() {
 		err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 		if err != nil {
@@ -352,53 +313,59 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 // Write implements the io.Writer interface.
 //go:nosplit
 func (i *ringFIO) Write(b []byte) (int, error) {
-	sqeID := i.r.Sqe() // index in the submit queue
-	reqID := i.r.ID()
+	sqe, ready := i.r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
 
-	// First the update barrier must be acquired.
-	i.r.sq.updateBarrier()
-	i.r.sq.startWrite()
-
-	i.r.sq.Entries[sqeID].Reset()
-	i.r.sq.Entries[sqeID].Opcode = WriteFixed
-	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())
-	i.r.sq.Entries[sqeID].Len = uint32(len(b))
-	i.r.sq.Entries[sqeID].Flags = uint8(SqeIoDrain)
-	i.r.sq.Entries[sqeID].Offset = uint64(atomic.LoadInt64(i.fOffset))
+	sqe.Opcode = WriteFixed
+	sqe.Fd = int32(i.f.Fd())
+	sqe.Len = uint32(len(b))
+	sqe.Flags = uint8(SqeIoDrain)
+	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
-	// writes to work we have to pass the address of the write buffer to
-	// the SQE.
-	i.r.sq.Entries[sqeID].Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.
-	i.r.sq.Entries[sqeID].UserData = reqID
+	reqID := i.r.ID()
+	sqe.UserData = reqID
 
-	i.r.sq.completeWrite(uint32(sqeID))
-	// Once the updates are complete then transition to the filled state.
-	// After the fill state transition then the ring is allowed to be
-	// entered.
-	i.r.sq.fill()
+	// Call the callback to signal we are ready to enter the ring.
+	ready()
 
-	// Submit the SQE by entering the ring.
-	if i.r.canEnter() {
-		err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-		if err != nil {
-			return 0, err
-		}
+	return i.getCqe(reqID)
+}
+
+// Read implements the io.Reader interface.
+//go:nosplit
+func (i *ringFIO) Read(b []byte) (int, error) {
+	sqe, ready := i.r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
 	}
 
-	// Use EntryBy to return the CQE by the "request" id in UserData.
-	cqe, err := i.r.cq.EntryBy(reqID)
-	if err != nil {
-		return 0, err
-	}
-	if cqe.Res < 0 {
-		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
-	}
-	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
+	sqe.Opcode = ReadFixed
+	sqe.Fd = int32(i.f.Fd())
+	sqe.Len = uint32(len(b))
+	sqe.Flags = uint8(SqeIoDrain)
+	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
-	return int(cqe.Res), nil
+	// This is probably a violation of the memory model, but in order for
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	reqID := i.r.ID()
+	sqe.UserData = reqID
+
+	// Call the callback to signal we are ready to enter the ring.
+	ready()
+
+	return i.getCqe(reqID)
 }
 
 // WriteAt implements the io.WriterAt interface.
