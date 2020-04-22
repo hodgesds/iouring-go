@@ -136,9 +136,7 @@ func (s *SubmitQueue) completeWrite(idx uint32) {
 			panic("invalid number of sq write completions")
 		}
 		if atomic.CompareAndSwapUint32(s.writes, writes, writes-1) {
-			if atomic.CompareAndSwapUint32(s.Tail, atomic.LoadUint32(s.Tail), idx) {
-				return
-			}
+			return
 		}
 		runtime.Gosched()
 	}
@@ -172,7 +170,8 @@ func (s *SubmitQueue) updateBarrier() {
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateUpdating) {
 				return
 			}
-		case RingStateWriting:
+		default:
+			panic("invalid state transition")
 		}
 		runtime.Gosched()
 	}
@@ -188,13 +187,14 @@ func (s *SubmitQueue) fill() {
 				continue
 			}
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
-				atomic.AddUint32(s.Tail, 1)
 				return
 			}
 		case RingStateWriting:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
 				return
 			}
+		case RingStateFilled:
+			return
 		}
 		runtime.Gosched()
 	}
