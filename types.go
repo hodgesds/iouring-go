@@ -249,13 +249,16 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 
 	head := atomic.LoadUint32(c.Head)
 	tail := atomic.LoadUint32(c.Tail)
+	if head == tail {
+		return nil, errEntryNotFound
+	}
 	mask := atomic.LoadUint32(c.Mask)
 
 	// TODO: How should the head of the ring be updated with concurrent
 	// callers?
 	for i := head & mask; i < tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
-			atomic.StoreUint32(c.Head, i+1)
+			atomic.StoreUint32(c.Head, head+i+1)
 			return &c.Entries[i], nil
 		}
 	}
@@ -295,6 +298,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	i.r.sq.updateBarrier()
 	i.r.sq.startWrite()
 
+	// TODO: Refactor this to use i.r.SubmitEntry
 	i.r.sq.Entries[sqeID].Reset()
 	i.r.sq.Entries[sqeID].Opcode = ReadFixed
 	i.r.sq.Entries[sqeID].Fd = int32(i.f.Fd())

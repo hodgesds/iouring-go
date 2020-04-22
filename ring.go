@@ -156,6 +156,40 @@ func (r *Ring) Sqe() int {
 	return int(tail&*r.sq.Mask) - 1
 }
 
+// SubmitEntry returns the next available SubmitEntry or nil if the ring is
+// busy. The returned function should be called after SubmitEntry is ready to
+// enter the ring.
+func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
+	// This function roughly follows this:
+	// https://github.com/axboe/liburing/blob/master/src/queue.c#L258
+
+	if r.p != nil && (uint(r.p.Flags)&SetupIOPoll == 0) {
+	getNext:
+		tail := atomic.LoadUint32(r.sq.Tail)
+		next := tail + 1
+		if int(next)-r.SubmitHead() <= len(r.sq.Entries) {
+			// Make sure the ring is safe for updating by acquring the
+			// update barrier.
+			r.sq.updateBarrier()
+			if !atomic.CompareAndSwapUint32(r.sq.Tail, tail, next) {
+				goto getNext
+			}
+			// Increase the write counter as the caller will be
+			// updating the returned SubmitEntry.
+			r.sq.startWrite()
+
+			// The callback that is returned is used to update the
+			// state of the ring and decrement the active writes
+			// counter.
+			return &r.sq.Entries[tail], func() {
+				r.sq.completeWrite(tail)
+			}
+		}
+	}
+	// TODO handle pool based
+	return nil, func() {}
+}
+
 // ID returns an id for a SQEs, it is a monotonically increasing value (until
 // uint64 wrapping).
 func (r *Ring) ID() uint64 {
