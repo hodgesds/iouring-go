@@ -119,7 +119,7 @@ func (s *SubmitQueue) Reset() {
 	}
 }
 
-func (s *SubmitQueue) needWakeup() bool {
+func (s *SubmitQueue) NeedWakeup() bool {
 	return atomic.LoadUint32(s.Flags)&SqNeedWakeup != 0
 }
 
@@ -256,9 +256,10 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 
 	// TODO: How should the head of the ring be updated with concurrent
 	// callers?
-	for i := head & mask; i < tail&mask; i++ {
+	for i := head & mask; i <= tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
 			atomic.StoreUint32(c.Head, head+i+1)
+			//atomic.StoreUint32(c.Head, head+i)
 			return &c.Entries[i], nil
 		}
 	}
@@ -291,13 +292,16 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		if i.r.debug {
+			fmt.Printf("enter complete\n")
+		}
 	}
 
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
 	if i.r.debug {
-		fmt.Printf("sq head: %v tail %v\nentries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
-		fmt.Printf("cq  head: %v tail %v\nentries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
 	}
 	if err != nil {
 		return 0, err
@@ -364,6 +368,12 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
+
+	if i.r.debug {
+		fmt.Printf("pre enter\n")
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
+	}
 
 	return i.getCqe(reqID)
 }

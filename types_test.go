@@ -15,6 +15,8 @@ func TestRingFileReadWriterRead(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
+	r.debug = true
+
 	content := []byte("testing...1,2.3")
 	f, err := ioutil.TempFile("", "example")
 	require.NoError(t, err)

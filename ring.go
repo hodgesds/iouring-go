@@ -55,7 +55,7 @@ func New(size uint) (*Ring, error) {
 func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
 	// Acquire the submit barrier so that the ring can safely be entered.
 	r.sq.submitBarrier()
-	if r.sq.needWakeup() {
+	if r.sq.NeedWakeup() {
 		flags |= EnterSqWakeup
 	}
 	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
@@ -140,20 +140,25 @@ func (r *Ring) closeSq() error {
 // SubmitHead returns the position of the head of the submit queue. This method
 // is safe for calling concurrently.
 func (r *Ring) SubmitHead() int {
-	return int(atomic.LoadUint32(r.sq.Head))
+	return int(atomic.LoadUint32(r.sq.Head) & atomic.LoadUint32(r.sq.Mask))
 }
 
 // SubmitTail returns the position of the tail of the submit queue. This method
 // is safe for calling concurrently.
 func (r *Ring) SubmitTail() int {
-	return int(atomic.LoadUint32(r.sq.Tail))
+	return int(atomic.LoadUint32(r.sq.Tail) & atomic.LoadUint32(r.sq.Mask))
 }
 
-// Sqe returns the offset of the next available SQE.
-func (r *Ring) Sqe() int {
-	// TODO: handle wrap and head==tail
-	tail := atomic.AddUint32(r.sq.Tail, 1)
-	return int(tail&*r.sq.Mask) - 1
+// CompleteHead returns the position of the head of the completion queue. This
+// method is safe for calling concurrently.
+func (r *Ring) CompleteHead() int {
+	return int(atomic.LoadUint32(r.cq.Head) & atomic.LoadUint32(r.cq.Mask))
+}
+
+// CompleteTail returns the position of the tail of the submit queue. This method
+// is safe for calling concurrently.
+func (r *Ring) CompleteTail() int {
+	return int(atomic.LoadUint32(r.cq.Tail) & atomic.LoadUint32(r.cq.Mask))
 }
 
 // SubmitEntry returns the next available SubmitEntry or nil if the ring is
@@ -166,7 +171,7 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 	if r.p != nil && (uint(r.p.Flags)&SetupIOPoll == 0) {
 	getNext:
 		tail := atomic.LoadUint32(r.sq.Tail)
-		next := tail + 1
+		next := tail&atomic.LoadUint32(r.sq.Mask) + 1
 		if int(next)-r.SubmitHead() <= len(r.sq.Entries) {
 			// Make sure the ring is safe for updating by acquring the
 			// update barrier.
@@ -186,6 +191,9 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 				r.sq.fill()
 			}
 		}
+		// Hit the end of the ring so start from the beginning.
+		atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
+		goto getNext
 	}
 	// TODO handle pool based
 	return nil, func() {}
