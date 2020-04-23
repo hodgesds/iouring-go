@@ -11,10 +11,9 @@ import (
 )
 
 var (
-	errInvalidEntries = errors.New("entries must be a power of 2 from 1 to 4096, inclusive")
-	uint32Size        = unsafe.Sizeof(uint32(0))
-	cqeSize           = unsafe.Sizeof(CompletionEntry{})
-	sqeSize           = unsafe.Sizeof(SubmitEntry{})
+	uint32Size = unsafe.Sizeof(uint32(0))
+	cqeSize    = unsafe.Sizeof(CompletionEntry{})
+	sqeSize    = unsafe.Sizeof(SubmitEntry{})
 )
 
 // Setup is used to setup a io_uring using the io_uring_setup syscall.

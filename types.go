@@ -34,33 +34,35 @@ type Params struct {
 	Flags        uint32
 	SqThreadCPU  uint32
 	SqThreadIdle uint32
-	Resv         [5]uint32
+	Features     uint32
+	WqFD         uint32
+	Resv         [3]uint32
 	SqOffset     SQRingOffset
 	CqOffset     CQRingOffset
 }
 
-// CQRingOffset describes the various completion queue offsets.
-type CQRingOffset struct {
-	Head        uint32
-	Tail        uint32
-	RingMask    uint32
-	RingEntries uint32
-	Overflow    uint32
-	Cqes        uint32
-	Resv        [2]uint64
+// SQRingOffset describes the various submit queue offsets.
+type SQRingOffset struct {
+	Head     uint32
+	Tail     uint32
+	RingMask uint32
+	Entries  uint32
+	Flags    uint32
+	Dropped  uint32
+	Array    uint32
+	Resv1    uint32
+	Resv2    uint64
 }
 
-// SQRingOffset describes the various submit queue offets.
-type SQRingOffset struct {
-	Head        uint32
-	Tail        uint32
-	RingMask    uint32
-	RingEntries uint32
-	Flags       uint32
-	Dropped     uint32
-	Array       uint32
-	Resv1       uint32
-	Resv2       uint64
+// CQRingOffset describes the various completion queue offsets.
+type CQRingOffset struct {
+	Head     uint32
+	Tail     uint32
+	RingMask uint32
+	Entries  uint32
+	Overflow uint32
+	Cqes     uint32
+	Resv     [2]uint64
 }
 
 // SubmitEntry is an IO submission data structure (Submission Queue Entry).
@@ -119,6 +121,7 @@ func (s *SubmitQueue) Reset() {
 	}
 }
 
+// NeedWakeup is used to determine whether the submit queue needs awoken.
 func (s *SubmitQueue) NeedWakeup() bool {
 	return atomic.LoadUint32(s.Flags)&SqNeedWakeup != 0
 }
@@ -259,7 +262,6 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	for i := head & mask; i <= tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
 			atomic.StoreUint32(c.Head, head+i+1)
-			//atomic.StoreUint32(c.Head, head+i)
 			return &c.Entries[i], nil
 		}
 	}
@@ -296,13 +298,14 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 			fmt.Printf("enter complete\n")
 		}
 	}
-
-	// Use EntryBy to return the CQE by the "request" id in UserData.
-	cqe, err := i.r.cq.EntryBy(reqID)
 	if i.r.debug {
+		fmt.Printf("sq: %+v\ncq: %+v\n", *i.r.sq.Dropped, *i.r.cq.Overflow)
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
 	}
+
+	// Use EntryBy to return the CQE by the "request" id in UserData.
+	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
 		return 0, err
 	}
@@ -325,7 +328,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	sqe.Opcode = WriteFixed
 	sqe.Fd = int32(i.f.Fd())
 	sqe.Len = uint32(len(b))
-	sqe.Flags = uint8(SqeIoDrain)
+	sqe.Flags = 0
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
@@ -354,7 +357,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	sqe.Opcode = ReadFixed
 	sqe.Fd = int32(i.f.Fd())
 	sqe.Len = uint32(len(b))
-	sqe.Flags = uint8(SqeIoDrain)
+	sqe.Flags = 0
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for

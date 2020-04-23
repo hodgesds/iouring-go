@@ -25,7 +25,7 @@ const (
 	 */
 	FeatSingleMmap     = (1 << 0)
 	FeatNoDrop         = (1 << 1)
-	FeatSubMitStable   = (1 << 2)
+	FeatSubmitStable   = (1 << 2)
 	FeatRwCurPos       = (1 << 3)
 	FeatCurPersonality = (1 << 4)
 )
@@ -150,7 +150,7 @@ const (
 	RegRegisterFiles         = 2
 	RegUnregisterFiles       = 3
 	RegRegisterEventfd       = 4
-	RegUnregisteREventfd     = 5
+	RegUnregisterEventfd     = 5
 	RegRegisterFilesUpdate   = 6
 	RegRegisterEventFdAsync  = 7
 	RegRegisterProbe         = 8
