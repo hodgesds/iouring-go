@@ -33,30 +33,6 @@ const (
 
 	// Opcodes
 	Read uint8 = 22
-	//Nop uint8 = iota
-	//Readv
-	//Writev
-	//Fsync
-	//ReadFixed
-	//WriteFixed
-	//PollAdd
-	//PollRemove
-	//SyncFileRange
-	//SendMsg
-	//RecvMsg
-	//Timeout
-	//TimeoutRemove
-	//Accept
-	//AsyncCancel
-	//LinkTimeout
-	//Connect
-	//Fallocate
-	//OpenAt
-	//Close
-	//FilesUpdate
-	//Statx
-	//Read
-	//Write
 )
 
 var (
@@ -345,9 +321,10 @@ func main() {
 		}
 		fmt.Printf("cq head:%v tail: %v\ncq entries: %+v\n", *cq.Head, *cq.Tail, cq.Entries[:2])
 
-		// Search for the cqe (this is real bad code)
+		// Search for the cqe in a suboptimal manner
 		for cqIdx := cqHead & *cq.Mask; cqIdx < cqTail; cqIdx++ {
-			if cq.Entries[int(cqIdx)].Data == uint64(i+1) || cq.Entries[cqIdx].Res <= 0 {
+			// The Cqe data should match our loop index (i)+1
+			if cq.Entries[int(cqIdx)].Data == uint64(i+1) {
 				exContent = append(exContent, readBuff...)
 				fmt.Printf("got content: %+v\n", string(readBuff))
 				*cq.Head += 1
