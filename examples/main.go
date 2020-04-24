@@ -328,6 +328,7 @@ func main() {
 				exContent = append(exContent, readBuff...)
 				fmt.Printf("got content: %+v\n", string(readBuff))
 				*cq.Head += 1
+				offset += uint64(cq.Entries[int(cqIdx)].Res)
 			}
 		}
 	}
