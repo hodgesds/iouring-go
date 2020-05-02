@@ -89,19 +89,19 @@ func NewFileRegistry(ringFd int) FileRegistry {
 
 func (r *fileRegistry) Register(fd int) error {
 	r.mu.Lock()
-	r.mu.RUnlock()
+	r.mu.Unlock()
 
 	r.f = append(r.f, fd)
 	r.fID[fd] = len(r.f) - 1
 	if r.fID[fd] < 0 {
 		r.fID[fd] = 0
 	}
-	return RegisterFiles(r.ringFd, r.f)
+	return ReregisterFiles(r.ringFd, r.f)
 }
 
 func (r *fileRegistry) Unregister(fd int) error {
 	r.mu.Lock()
-	r.mu.RUnlock()
+	r.mu.Unlock()
 
 	id, ok := r.fID[fd]
 	if !ok {
@@ -109,7 +109,7 @@ func (r *fileRegistry) Unregister(fd int) error {
 	}
 	r.f = append(r.f[:id], r.f[id+1:]...)
 
-	return RegisterFiles(r.ringFd, r.f)
+	return UnregisterFiles(r.ringFd, r.f)
 }
 
 func (r *fileRegistry) ID(fd int) (int, bool) {

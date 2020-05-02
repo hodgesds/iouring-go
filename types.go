@@ -325,8 +325,12 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 		return 0, errors.New("ring unavailable")
 	}
 
+	fd, ok := i.r.fileReg.ID(int(i.f.Fd()))
+	if !ok {
+		panic("file not registered")
+	}
 	sqe.Opcode = WriteFixed
-	sqe.Fd = int32(i.f.Fd())
+	sqe.Fd = int32(fd)
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))

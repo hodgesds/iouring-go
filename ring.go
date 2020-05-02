@@ -12,15 +12,16 @@ import (
 
 // Ring contains an io_uring submit and completion ring.
 type Ring struct {
-	fd     int
-	p      *Params
-	cq     *CompletionQueue
-	cqMu   sync.RWMutex
-	sq     *SubmitQueue
-	sqMu   sync.RWMutex
-	sqPool sync.Pool
-	idx    *uint64
-	debug  bool
+	fd      int
+	p       *Params
+	cq      *CompletionQueue
+	cqMu    sync.RWMutex
+	sq      *SubmitQueue
+	sqMu    sync.RWMutex
+	sqPool  sync.Pool
+	idx     *uint64
+	debug   bool
+	fileReg FileRegistry
 }
 
 // New is used to create an iouring.Ring.
@@ -43,11 +44,12 @@ func New(size uint) (*Ring, error) {
 	sq.state = &sqState
 	sq.writes = &sqWrites
 	return &Ring{
-		p:   &p,
-		fd:  fd,
-		cq:  &cq,
-		sq:  &sq,
-		idx: &idx,
+		p:       &p,
+		fd:      fd,
+		cq:      &cq,
+		sq:      &sq,
+		idx:     &idx,
+		fileReg: NewFileRegistry(fd),
 	}, nil
 }
 
@@ -217,5 +219,5 @@ func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
 		r:       r,
 		f:       f,
 		fOffset: &offset,
-	}, nil
+	}, r.fileReg.Register(int(f.Fd()))
 }
