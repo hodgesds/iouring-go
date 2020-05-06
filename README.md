@@ -1,6 +1,8 @@
 # `io_uring` Go 
 **WORK IN PROGRESS** This library adds support for [`io_uring`](https://kernel.dk/io_uring.pdf) for
 Go. This library is similar to [liburing](https://github.com/axboe/liburing).
+If you want to contribute feel free to send PRs or emails, there's plenty of
+things that need cleaned up.
 
 ### General Steps
 1) Create the `io_uring` buffers
@@ -29,6 +31,43 @@ mmap'd sumission queue) then the ring may be submitted. This design is not
 final and this library is far from ready for general use.
 
 ![ring states](./ring_states.svg)
+
+## Example
+Here is a minimal example to get started:
+
+```
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/hodgesds/iouring-go"
+)
+
+func main() {
+	r, err := iouring.New(1024)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Open a file for registring with the ring.
+	f, err := os.OpenFile("hello.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Register the file with the ring, which returns an io.WriteCloser.
+	rw, err := r.FileReadWriter(f)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := rw.Write([]byte("hello io_uring!")); err != nil {
+		log.Fatal(err)
+	}
+}
+```
 
 ## Other References
 https://cor3ntin.github.io/posts/iouring/

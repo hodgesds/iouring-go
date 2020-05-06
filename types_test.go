@@ -80,7 +80,7 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	content := []byte("testing...1,2.3")
+	content := []byte("testing...1,2,3")
 	f, err := ioutil.TempFile("", "example")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
