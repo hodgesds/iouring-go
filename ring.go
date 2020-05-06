@@ -174,8 +174,9 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 	getNext:
 		tail := atomic.LoadUint32(r.sq.Tail)
 		head := atomic.LoadUint32(r.sq.Head)
-		next := tail&atomic.LoadUint32(r.sq.Mask) + 1
-		if int(next)-r.SubmitHead() <= len(r.sq.Entries) {
+		mask := atomic.LoadUint32(r.sq.Mask)
+		next := tail&mask + 1
+		if next-head <= uint32(len(r.sq.Entries)) {
 			// Make sure the ring is safe for updating by acquring the
 			// update barrier.
 			r.sq.updateBarrier()
@@ -189,10 +190,10 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 			// The callback that is returned is used to update the
 			// state of the ring and decrement the active writes
 			// counter.
-			return &r.sq.Entries[tail], func() {
+			return &r.sq.Entries[tail&mask], func() {
 				r.sq.completeWrite()
 				r.sq.fill()
-				r.sq.Array[next-1] = head & atomic.LoadUint32(r.sq.Mask)
+				r.sq.Array[next-1] = head & mask
 			}
 		}
 		goto getNext
