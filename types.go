@@ -101,6 +101,8 @@ type SubmitQueue struct {
 	Flags   *uint32
 	Dropped *uint32
 
+	// Array holds entries to be submitted; it must never be resized it is mmap'd.
+	Array []uint32
 	// Entries must never be resized, it is mmap'd.
 	Entries []SubmitEntry
 	// ptr is pointer to the start of the mmap.
@@ -301,6 +303,7 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 	if i.r.debug {
 		fmt.Printf("sq: %+v\ncq: %+v\n", *i.r.sq.Dropped, *i.r.cq.Overflow)
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
+		fmt.Printf("sq array: %+v\n", i.r.sq.Array[:2])
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
 	}
 

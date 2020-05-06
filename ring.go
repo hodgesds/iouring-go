@@ -173,6 +173,7 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 	if r.p != nil && (uint(r.p.Flags)&SetupIOPoll == 0) {
 	getNext:
 		tail := atomic.LoadUint32(r.sq.Tail)
+		head := atomic.LoadUint32(r.sq.Head)
 		next := tail&atomic.LoadUint32(r.sq.Mask) + 1
 		if int(next)-r.SubmitHead() <= len(r.sq.Entries) {
 			// Make sure the ring is safe for updating by acquring the
@@ -191,6 +192,7 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 			return &r.sq.Entries[tail], func() {
 				r.sq.completeWrite()
 				r.sq.fill()
+				r.sq.Array[next-1] = head & atomic.LoadUint32(r.sq.Mask)
 			}
 		}
 		// Hit the end of the ring so start from the beginning.

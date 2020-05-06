@@ -101,6 +101,11 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 		Len:  int(p.SqEntries),
 		Cap:  int(p.SqEntries),
 	}))
+	sq.Array = *(*[]uint32)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(sqPtr + uintptr(p.SqOffset.Array))),
+		Len:  int(p.SqEntries),
+		Cap:  int(p.SqEntries),
+	}))
 
 	if singleMmap {
 		cqPtr = sqPtr
