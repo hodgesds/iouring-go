@@ -302,9 +302,10 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 	}
 	if i.r.debug {
 		fmt.Printf("sq: %+v\ncq: %+v\n", *i.r.sq.Dropped, *i.r.cq.Overflow)
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
-		fmt.Printf("sq array: %+v\n", i.r.sq.Array[:2])
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
+		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:3])
+		fmt.Printf("sq array: %+v\n", i.r.sq.Array[:3])
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
 	}
 
 	// Use EntryBy to return the CQE by the "request" id in UserData.
@@ -328,12 +329,8 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 		return 0, errors.New("ring unavailable")
 	}
 
-	fd, ok := i.r.fileReg.ID(int(i.f.Fd()))
-	if !ok {
-		panic("file not registered")
-	}
 	sqe.Opcode = WriteFixed
-	sqe.Fd = int32(fd)
+	sqe.Fd = int32(i.f.Fd())
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
@@ -381,8 +378,9 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 
 	if i.r.debug {
 		fmt.Printf("pre enter\n")
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:2])
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:2])
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:3])
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 	}
 
 	return i.getCqe(reqID)
