@@ -9,7 +9,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	r, err := New(2048)
+	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -32,12 +32,12 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewRingInvalidSize(t *testing.T) {
-	_, err := New(99999)
+	_, err := New(99999, nil)
 	require.Error(t, err)
 }
 
 func TestRingEnter(t *testing.T) {
-	r, err := New(2048)
+	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 	count := 0

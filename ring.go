@@ -25,9 +25,11 @@ type Ring struct {
 }
 
 // New is used to create an iouring.Ring.
-func New(size uint) (*Ring, error) {
-	p := Params{}
-	fd, err := Setup(size, &p)
+func New(size uint, p *Params) (*Ring, error) {
+	if p == nil {
+		p = &Params{}
+	}
+	fd, err := Setup(size, p)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +38,7 @@ func New(size uint) (*Ring, error) {
 		sq       SubmitQueue
 		sqWrites uint32
 	)
-	if err := MmapRing(fd, &p, &sq, &cq); err != nil {
+	if err := MmapRing(fd, p, &sq, &cq); err != nil {
 		return nil, err
 	}
 	idx := uint64(0)
@@ -44,7 +46,7 @@ func New(size uint) (*Ring, error) {
 	sq.state = &sqState
 	sq.writes = &sqWrites
 	return &Ring{
-		p:       &p,
+		p:       p,
 		fd:      fd,
 		cq:      &cq,
 		sq:      &sq,

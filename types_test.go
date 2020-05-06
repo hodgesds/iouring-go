@@ -11,7 +11,7 @@ import (
 )
 
 func TestRingFileReadWriterRead(t *testing.T) {
-	r, err := New(1024)
+	r, err := New(1024, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -46,7 +46,7 @@ func TestRingFileReadWriterRead(t *testing.T) {
 }
 
 func TestRingFileReadWriterWrite(t *testing.T) {
-	r, err := New(1024)
+	r, err := New(1024, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -76,7 +76,7 @@ func TestRingFileReadWriterWrite(t *testing.T) {
 }
 
 func TestRingFileReadWriterWriteRead(t *testing.T) {
-	r, err := New(1024)
+	r, err := New(1024, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
