@@ -105,6 +105,7 @@ type SubmitQueue struct {
 
 	// Entries must never be resized, it is mmap'd.
 	Entries []Sqe
+	Array   []uint32
 }
 
 type CompletionQueue struct {
@@ -195,6 +196,11 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 		Len:  int(p.Sq_entries),
 		Cap:  int(p.Sq_entries),
 	}))
+	sq.Array = *(*[]uint32)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(sqPtr + uintptr(p.Sq_off.Array))),
+		Len:  int(p.Sq_entries),
+		Cap:  int(p.Sq_entries),
+	}))
 
 	// Map the completion queue.
 	cq.Size = uint32(uint(p.Cq_off.Cqes) + (uint(p.Cq_entries) * uint(cqeSize)))
@@ -256,7 +262,7 @@ func main() {
 	defer os.Remove(tmpFile.Name())
 
 	// Write to the file without using the ring.
-	content := []byte("testing...1,2.3")
+	content := []byte("testing  1,2,3")
 	_, err = tmpFile.Write(content)
 	if err != nil {
 		log.Fatal(err)
@@ -302,6 +308,7 @@ func main() {
 		// then it is less of a problem.
 		sq.Entries[sqIdx].Addr = (uint64)(uintptr(unsafe.Pointer(&readBuff[0])))
 
+		sq.Array[sqIdx] = *sq.Head & *sq.Mask
 		*sq.Tail += 1
 		fmt.Printf("sq head:%v tail: %v\nsq entries: %+v\n", *sq.Head, *sq.Tail, sq.Entries[:2])
 
