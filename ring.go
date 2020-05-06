@@ -195,8 +195,6 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 				r.sq.Array[next-1] = head & atomic.LoadUint32(r.sq.Mask)
 			}
 		}
-		// Hit the end of the ring so start from the beginning.
-		atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
 		goto getNext
 	}
 	// TODO handle pool based

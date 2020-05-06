@@ -211,7 +211,7 @@ func (s *SubmitQueue) empty() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
 		case RingStateWriting:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
 				return
 			}
 		default:
@@ -263,7 +263,7 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	// callers?
 	for i := head & mask; i <= tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
-			atomic.StoreUint32(c.Head, head+i+1)
+			atomic.StoreUint32(c.Head, i)
 			return &c.Entries[i], nil
 		}
 	}
@@ -301,7 +301,6 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 		}
 	}
 	if i.r.debug {
-		fmt.Printf("sq: %+v\ncq: %+v\n", *i.r.sq.Dropped, *i.r.cq.Overflow)
 		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:3])
 		fmt.Printf("sq array: %+v\n", i.r.sq.Array[:3])

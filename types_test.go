@@ -88,7 +88,6 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	r.debug = true
 	// Write to the file using the ring
 	_, err = rw.Write(content)
 	require.NoError(t, err)
@@ -103,11 +102,11 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
-	buf2 := make([]byte, len(content)/2)
+	buf2 := make([]byte, len(content)/2+1)
 	n, err = rw.Read(buf2)
 	require.NoError(t, err)
 	require.True(t, n > 0)
-	require.Contains(t, content, append(buf, buf2...))
+	require.Equal(t, content, append(buf, buf2...))
 
 	require.NoError(t, rw.Close())
 }
