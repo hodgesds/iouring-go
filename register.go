@@ -66,6 +66,7 @@ func ReregisterFiles(fd int, files []int) error {
 	return nil
 }
 
+// FileRegistry is used to register files to a ring.
 type FileRegistry interface {
 	Register(int) error
 	Unregister(int) error
@@ -79,6 +80,7 @@ type fileRegistry struct {
 	fID    map[int]int /* map of fd to offset */
 }
 
+// NewFileRegistry returns a configured file regisry for a ring.
 func NewFileRegistry(ringFd int) FileRegistry {
 	return &fileRegistry{
 		ringFd: ringFd,
@@ -87,9 +89,10 @@ func NewFileRegistry(ringFd int) FileRegistry {
 	}
 }
 
+// Register is used to register a FD to a ring.
 func (r *fileRegistry) Register(fd int) error {
 	r.mu.Lock()
-	r.mu.Unlock()
+	defer r.mu.Unlock()
 
 	r.f = append(r.f, fd)
 	r.fID[fd] = len(r.f) - 1
@@ -99,9 +102,10 @@ func (r *fileRegistry) Register(fd int) error {
 	return ReregisterFiles(r.ringFd, r.f)
 }
 
+// Unregister removes a FD from the file registry.
 func (r *fileRegistry) Unregister(fd int) error {
 	r.mu.Lock()
-	r.mu.Unlock()
+	defer r.mu.Unlock()
 
 	id, ok := r.fID[fd]
 	if !ok {
@@ -112,6 +116,7 @@ func (r *fileRegistry) Unregister(fd int) error {
 	return UnregisterFiles(r.ringFd, r.f)
 }
 
+// ID returns the index of a file in the registry.
 func (r *fileRegistry) ID(fd int) (int, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
