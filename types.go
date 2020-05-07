@@ -405,7 +405,58 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 
 // WriteAt implements the io.WriterAt interface.
 func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
-	return 0, errors.New("not implemented")
+	sqe, ready := i.r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = WriteFixed
+	sqe.Fd = int32(i.f.Fd())
+	sqe.Len = uint32(len(b))
+	sqe.Flags = 0
+	sqe.Offset = uint64(o)
+
+	// This is probably a violation of the memory model, but in order for
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	reqID := i.r.ID()
+	sqe.UserData = reqID
+
+	// Call the callback to signal we are ready to enter the ring.
+	ready()
+
+	return i.getCqe(reqID)
+}
+
+// ReadAt implements the io.ReaderAt interface.
+func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
+	sqe, ready := i.r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = ReadFixed
+	sqe.Fd = int32(i.f.Fd())
+	sqe.Len = uint32(len(b))
+	sqe.Flags = 0
+	sqe.Offset = uint64(o)
+
+	// This is probably a violation of the memory model, but in order for
+	// reads to work we have to pass the address of the read buffer to the
+	// SQE.
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	reqID := i.r.ID()
+	sqe.UserData = reqID
+
+	// Call the callback to signal we are ready to enter the ring.
+	ready()
+
+	return i.getCqe(reqID)
 }
 
 // Close implements the io.Closer interface.
