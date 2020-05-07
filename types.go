@@ -246,11 +246,8 @@ type CompletionQueue struct {
 // EntryBy returns a CompletionEntry by comparing the user data, this
 // should be called after the ring has been entered.
 func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
-	// TODO(hodges): This function is wrong but "should work", it
-	// should follow this pattern:
-	// To find the index of an event, the application must mask the current tail
-	// index with the size mask of the ring.
-	// ref: https://kernel.dk/io_uring.pdf
+	// TODO: This function only updates the head of the CQ if the entry is
+	// the first result. This is suboptimal.
 
 	head := atomic.LoadUint32(c.Head)
 	tail := atomic.LoadUint32(c.Tail)
@@ -259,18 +256,20 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 		return nil, errEntryNotFound
 	}
 
-	// TODO: How should the head of the ring be updated with concurrent
-	// callers?
 	for i := head & mask; i <= uint32(len(c.Entries)-1); i++ {
 		if c.Entries[i].UserData == userData {
-			atomic.StoreUint32(c.Head, i)
+			if i == head&mask {
+				atomic.StoreUint32(c.Head, i)
+			}
 			return &c.Entries[i], nil
 		}
 	}
 	// Handle wrapping.
 	for i := uint32(0); i <= tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
-			atomic.StoreUint32(c.Head, i)
+			if i == 0 || i == head&mask {
+				atomic.StoreUint32(c.Head, i)
+			}
 			return &c.Entries[i], nil
 		}
 	}
