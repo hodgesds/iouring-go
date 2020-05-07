@@ -137,6 +137,7 @@ func TestConcurrentReaders(t *testing.T) {
 	r, err := New(ringSize, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	r.debug = true
 
 	f, err := os.Open("/dev/urandom")
 	require.NoError(t, err)
@@ -145,7 +146,7 @@ func TestConcurrentReaders(t *testing.T) {
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-	for i := 0; i < int(ringSize)*2; i++ {
+	for i := 0; i < int(ringSize); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
