@@ -254,10 +254,10 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 
 	head := atomic.LoadUint32(c.Head)
 	tail := atomic.LoadUint32(c.Tail)
-	if head == tail {
+	mask := atomic.LoadUint32(c.Mask)
+	if head&mask == tail&mask {
 		return nil, errEntryNotFound
 	}
-	mask := atomic.LoadUint32(c.Mask)
 
 	// TODO: How should the head of the ring be updated with concurrent
 	// callers?
@@ -301,10 +301,16 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 		}
 	}
 	if i.r.debug {
+		sqHead := *i.r.sq.Head
+		sqTail := *i.r.sq.Tail
+		sqMask := *i.r.sq.Mask
+		cqHead := *i.r.cq.Head
+		cqTail := *i.r.cq.Tail
+		cqMask := *i.r.cq.Mask
 		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:3])
-		fmt.Printf("sq array: %+v\n", i.r.sq.Array[:3])
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
+		fmt.Printf("sq array: %+v\n", i.r.sq.Array)
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
 	}
 
 	// Use EntryBy to return the CQE by the "request" id in UserData.
@@ -376,9 +382,15 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	ready()
 
 	if i.r.debug {
+		sqHead := *i.r.sq.Head
+		sqTail := *i.r.sq.Tail
+		sqMask := *i.r.sq.Mask
+		cqHead := *i.r.cq.Head
+		cqTail := *i.r.cq.Tail
+		cqMask := *i.r.cq.Mask
 		fmt.Printf("pre enter\n")
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", *i.r.sq.Head, *i.r.sq.Tail, i.r.sq.Entries[:3])
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", *i.r.cq.Head, *i.r.cq.Tail, i.r.cq.Entries[:3])
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
 		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 	}
 

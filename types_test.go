@@ -110,3 +110,25 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 
 	require.NoError(t, rw.Close())
 }
+
+func TestRingReadWrap(t *testing.T) {
+	ringSize := uint(4)
+	r, err := New(ringSize, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	f, err := os.Open("/dev/urandom")
+	require.NoError(t, err)
+
+	rw, err := r.FileReadWriter(f)
+	require.NoError(t, err)
+
+	r.debug = true
+
+	for i := 0; i < int(ringSize)*4; i++ {
+		buf := make([]byte, 16)
+		n, err := rw.Read(buf)
+		require.NoError(t, err)
+		require.True(t, n > 0)
+	}
+}

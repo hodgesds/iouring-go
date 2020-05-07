@@ -178,7 +178,7 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 		head := atomic.LoadUint32(r.sq.Head)
 		mask := atomic.LoadUint32(r.sq.Mask)
 		next := tail&mask + 1
-		if next-head <= uint32(len(r.sq.Entries)) {
+		if next <= uint32(len(r.sq.Entries)-1) {
 			// Make sure the ring is safe for updating by acquring the
 			// update barrier.
 			r.sq.updateBarrier()
@@ -198,6 +198,9 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 				r.sq.Array[next-1] = head & mask
 			}
 		}
+		// When the ring wraps restart.
+		atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
+		atomic.CompareAndSwapUint32(r.sq.Head, head, 0)
 		goto getNext
 	}
 	// TODO handle pool based
