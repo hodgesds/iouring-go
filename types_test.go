@@ -5,6 +5,7 @@ package iouring
 import (
 	"io/ioutil"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -129,4 +130,31 @@ func TestRingReadWrap(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, n > 0)
 	}
+}
+
+func TestConcurrentReaders(t *testing.T) {
+	ringSize := uint(8)
+	r, err := New(ringSize, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	f, err := os.Open("/dev/urandom")
+	require.NoError(t, err)
+
+	rw, err := r.FileReadWriter(f)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < int(ringSize)*2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, 16)
+			n, err := rw.Read(buf)
+			require.NoError(t, err)
+			require.True(t, n > 0)
+		}()
+	}
+
+	wg.Wait()
 }

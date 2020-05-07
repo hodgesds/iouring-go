@@ -176,7 +176,9 @@ func (s *SubmitQueue) updateBarrier() {
 				return
 			}
 		default:
-			panic("invalid state transition")
+			panic(fmt.Sprintf(
+				"can't enter updating state from state: %v",
+				state))
 		}
 		runtime.Gosched()
 	}
@@ -214,6 +216,8 @@ func (s *SubmitQueue) empty() {
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
 				return
 			}
+		case RingStateFilled:
+			return
 		default:
 			panic(fmt.Sprintf(
 				"can not transition to empty state from state %v",
