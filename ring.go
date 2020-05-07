@@ -178,7 +178,7 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 		head := atomic.LoadUint32(r.sq.Head)
 		mask := atomic.LoadUint32(r.sq.Mask)
 		next := tail&mask + 1
-		if next <= uint32(len(r.sq.Entries)-1) {
+		if next <= uint32(len(r.sq.Entries)) {
 			// Make sure the ring is safe for updating by acquring the
 			// update barrier.
 			r.sq.updateBarrier()

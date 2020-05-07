@@ -261,7 +261,14 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 
 	// TODO: How should the head of the ring be updated with concurrent
 	// callers?
-	for i := head & mask; i <= tail&mask; i++ {
+	for i := head & mask; i <= uint32(len(c.Entries)-1); i++ {
+		if c.Entries[i].UserData == userData {
+			atomic.StoreUint32(c.Head, i)
+			return &c.Entries[i], nil
+		}
+	}
+	// Handle wrapping.
+	for i := uint32(0); i <= tail&mask; i++ {
 		if c.Entries[i].UserData == userData {
 			atomic.StoreUint32(c.Head, i)
 			return &c.Entries[i], nil
