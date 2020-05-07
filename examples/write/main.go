@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	r, err := iouring.New(1024)
+	r, err := iouring.New(1024, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -26,6 +26,11 @@ func main() {
 	}
 
 	if _, err := rw.Write([]byte("hello io_uring!")); err != nil {
+		log.Fatal(err)
+	}
+
+	// Close the WriteCloser, which closes the open file (f).
+	if err := r.Close(); err != nil {
 		log.Fatal(err)
 	}
 }
