@@ -175,10 +175,6 @@ func (s *SubmitQueue) updateBarrier() {
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateUpdating) {
 				return
 			}
-		default:
-			panic(fmt.Sprintf(
-				"can't enter updating state from state: %v",
-				state))
 		}
 		runtime.Gosched()
 	}
