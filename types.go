@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -21,6 +22,10 @@ const (
 	RingStateFilled
 	// RingStateWriting is when a ring is being written to.
 	RingStateWriting
+
+	// CqSeenFlag is a nonstandard flag for handling concurrent readers
+	// from the CompletionQueue.
+	CqSeenFlag = 1
 )
 
 var (
@@ -256,20 +261,28 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 		return nil, errEntryNotFound
 	}
 
-	for i := head & mask; i <= uint32(len(c.Entries)-1); i++ {
+	// seenIdx is used for indicating the largest consecutive seen CQEs,
+	// which is then used for setting the new head position.
+	seenIdx := head & mask
+	for i := seenIdx; i <= uint32(len(c.Entries)-1); i++ {
+		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+			seenIdx = i
+		}
 		if c.Entries[i].UserData == userData {
-			if i == head&mask {
-				atomic.StoreUint32(c.Head, i)
-			}
+			c.Entries[i].Flags |= CqSeenFlag
+			atomic.StoreUint32(c.Head, seenIdx)
 			return &c.Entries[i], nil
 		}
 	}
 	// Handle wrapping.
+	seenIdx = uint32(0)
 	for i := uint32(0); i <= tail&mask; i++ {
+		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+			seenIdx = i
+		}
 		if c.Entries[i].UserData == userData {
-			if i == 0 || i == head&mask {
-				atomic.StoreUint32(c.Head, i)
-			}
+			c.Entries[i].Flags |= CqSeenFlag
+			atomic.StoreUint32(c.Head, seenIdx)
 			return &c.Entries[i], nil
 		}
 	}
@@ -296,7 +309,8 @@ type ringFIO struct {
 	fOffset *int64
 }
 
-func (i *ringFIO) getCqe(reqID uint64) (int, error) {
+// getCqe is used for getting a CQE result and will retry up to one time.
+func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
 	if i.r.canEnter() {
 		err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 		if err != nil {
@@ -322,10 +336,13 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
+		if err == errEntryNotFound && retryNotFound {
+			return i.getCqe(reqID, false)
+		}
 		return 0, err
 	}
 	if cqe.Res < 0 {
-		return int(cqe.Res), fmt.Errorf("Error: %d", cqe.Res)
+		return int(cqe.Res), syscall.Errno(cqe.Res)
 	}
 	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 
@@ -358,7 +375,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID)
+	return i.getCqe(reqID, true)
 }
 
 // Read implements the io.Reader interface.
@@ -400,7 +417,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 	}
 
-	return i.getCqe(reqID)
+	return i.getCqe(reqID, true)
 }
 
 // WriteAt implements the io.WriterAt interface.
@@ -428,7 +445,7 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID)
+	return i.getCqe(reqID, true)
 }
 
 // ReadAt implements the io.ReaderAt interface.
@@ -456,7 +473,7 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID)
+	return i.getCqe(reqID, true)
 }
 
 // Close implements the io.Closer interface.
