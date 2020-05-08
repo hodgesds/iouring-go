@@ -137,7 +137,6 @@ func TestConcurrentReaders(t *testing.T) {
 	r, err := New(ringSize, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
-	r.debug = true
 
 	f, err := os.Open("/dev/urandom")
 	require.NoError(t, err)
