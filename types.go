@@ -12,6 +12,9 @@ import (
 	"github.com/pkg/errors"
 )
 
+// RingState is the state of the ring.
+type RingState uint32
+
 const (
 	// RingStateEmpty is when a ring is empty.
 	RingStateEmpty uint32 = 1 << iota
@@ -27,6 +30,22 @@ const (
 	// from the CompletionQueue.
 	CqSeenFlag = 1
 )
+
+// String implements the stringer method.
+func (s RingState) String() string {
+	switch uint32(s) {
+	case RingStateEmpty:
+		return "empty"
+	case RingStateUpdating:
+		return "updating"
+	case RingStateFilled:
+		return "filled"
+	case RingStateWriting:
+		return "writing"
+	default:
+		return "invalid"
+	}
+}
 
 var (
 	errEntryNotFound = errors.New("Completion entry not found")
@@ -157,15 +176,18 @@ func (s *SubmitQueue) completeWrite() {
 func (s *SubmitQueue) submitBarrier() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateWriting:
-			// Concurrent writes are allowed.
-			return
-		case RingStateEmpty, RingStateFilled:
+		case RingStateFilled, RingStateEmpty:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateWriting) {
 				return
 			}
-		case RingStateUpdating:
+		case RingStateUpdating, RingStateWriting:
 			runtime.Gosched()
+		default:
+			panic(fmt.Sprintf(
+				"invalid use of submit barrier from state: %+v",
+				RingState(state).String(),
+			))
+
 		}
 	}
 }
@@ -176,7 +198,7 @@ func (s *SubmitQueue) updateBarrier() {
 		switch state := atomic.LoadUint32(s.state); state {
 		case RingStateUpdating:
 			return
-		case RingStateEmpty, RingStateFilled:
+		case RingStateFilled, RingStateEmpty:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateUpdating) {
 				return
 			}
@@ -214,15 +236,19 @@ func (s *SubmitQueue) empty() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
 		case RingStateWriting:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
 				return
 			}
 		case RingStateFilled:
+			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
+				return
+			}
+		case RingStateEmpty:
 			return
 		default:
 			panic(fmt.Sprintf(
 				"can not transition to empty state from state %v",
-				state,
+				RingState(state).String(),
 			))
 		}
 	}
