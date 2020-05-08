@@ -145,7 +145,7 @@ func TestConcurrentReaders(t *testing.T) {
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-	for i := 0; i < int(ringSize); i++ {
+	for i := 0; i < int(ringSize*13); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

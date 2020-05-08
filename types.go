@@ -225,8 +225,9 @@ func (s *SubmitQueue) fill() {
 			}
 		case RingStateFilled:
 			return
+		default:
+			runtime.Gosched()
 		}
-		runtime.Gosched()
 	}
 }
 
@@ -235,21 +236,14 @@ func (s *SubmitQueue) fill() {
 func (s *SubmitQueue) empty() {
 	for {
 		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateWriting:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
-				return
-			}
-		case RingStateFilled:
+		case RingStateWriting, RingStateFilled:
 			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
 				return
 			}
 		case RingStateEmpty:
 			return
 		default:
-			panic(fmt.Sprintf(
-				"can not transition to empty state from state %v",
-				RingState(state).String(),
-			))
+			runtime.Gosched()
 		}
 	}
 }
