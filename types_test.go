@@ -118,14 +118,14 @@ func TestRingReadWrap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	f, err := os.Open("/dev/urandom")
+	f, err := os.Open("/dev/zero")
 	require.NoError(t, err)
 
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	for i := 0; i < int(ringSize)*4; i++ {
-		buf := make([]byte, 16)
+	for i := 0; i < int(ringSize)*2; i++ {
+		buf := make([]byte, 8)
 		n, err := rw.Read(buf)
 		require.NoError(t, err)
 		require.True(t, n > 0)
@@ -134,27 +134,43 @@ func TestRingReadWrap(t *testing.T) {
 
 func TestConcurrentReaders(t *testing.T) {
 	ringSize := uint(8)
-	r, err := New(ringSize, nil)
+	r, err := New(ringSize, &Params{})
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	f, err := os.Open("/dev/urandom")
+	f, err := os.Open("/dev/zero")
 	require.NoError(t, err)
 
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
+	work := make(chan struct{})
+	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < int(ringSize*13); i++ {
-		wg.Add(1)
+
+	for i := 0; i < 2; i++ {
 		go func() {
-			defer wg.Done()
-			buf := make([]byte, 16)
-			n, err := rw.Read(buf)
-			require.NoError(t, err)
-			require.True(t, n > 0)
+			for {
+				select {
+				case <-stop:
+					return
+				case <-work:
+					buf := make([]byte, 16)
+					_, err := rw.Read(buf)
+					wg.Done()
+					if err != nil && err != ErrEntryNotFound {
+						require.NoError(t, err)
+					}
+				}
+			}
 		}()
 	}
 
+	for i := 0; i < int(ringSize*2); i++ {
+		wg.Add(1)
+		work <- struct{}{}
+	}
+
 	wg.Wait()
+	close(stop)
 }

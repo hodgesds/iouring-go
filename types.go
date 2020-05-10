@@ -48,7 +48,8 @@ func (s RingState) String() string {
 }
 
 var (
-	errEntryNotFound = errors.New("Completion entry not found")
+	// ErrEntryNotFound is returned when a CQE is not found.
+	ErrEntryNotFound = errors.New("Completion entry not found")
 )
 
 // Params are used to configured a io uring.
@@ -275,7 +276,7 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	tail := atomic.LoadUint32(c.Tail)
 	mask := atomic.LoadUint32(c.Mask)
 	if head&mask == tail&mask {
-		return nil, errEntryNotFound
+		return nil, ErrEntryNotFound
 	}
 
 	// seenIdx is used for indicating the largest consecutive seen CQEs,
@@ -322,7 +323,7 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 		}
 	}
 
-	return nil, errEntryNotFound
+	return nil, ErrEntryNotFound
 }
 
 // KernelTimespec is a kernel timespec.
@@ -371,7 +372,7 @@ func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
-		if err == errEntryNotFound && retryNotFound {
+		if err == ErrEntryNotFound && retryNotFound {
 			return i.getCqe(reqID, false)
 		}
 		return 0, err
