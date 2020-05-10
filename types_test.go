@@ -124,7 +124,7 @@ func TestRingReadWrap(t *testing.T) {
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	for i := 0; i < int(ringSize)*2; i++ {
+	for i := 0; i < int(ringSize)*4; i++ {
 		buf := make([]byte, 8)
 		n, err := rw.Read(buf)
 		require.NoError(t, err)
