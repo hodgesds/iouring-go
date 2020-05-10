@@ -213,6 +213,11 @@ func (r *Ring) ID() uint64 {
 	return atomic.AddUint64(r.idx, 1)
 }
 
+// FD returns the fd of the ring.
+func (r *Ring) FD() int {
+	return r.fd
+}
+
 // FileReadWriter returns an io.ReadWriter from an os.File that uses the ring.
 // Note that is is not valid to use other operations on the file (Seek/Close)
 // in combination with the reader.

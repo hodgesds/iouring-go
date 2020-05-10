@@ -271,9 +271,6 @@ type CompletionQueue struct {
 // EntryBy returns a CompletionEntry by comparing the user data, this
 // should be called after the ring has been entered.
 func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
-	// TODO: This function only updates the head of the CQ if the entry is
-	// the first result. This is suboptimal.
-
 	head := atomic.LoadUint32(c.Head)
 	tail := atomic.LoadUint32(c.Tail)
 	mask := atomic.LoadUint32(c.Mask)
@@ -282,10 +279,20 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	}
 
 	// seenIdx is used for indicating the largest consecutive seen CQEs,
-	// which is then used for setting the new head position.
+	// which is then used for setting the new head position. This is done
+	// by setting the CqSeenFlag bit on a CQE UserData once a CQE has been
+	// read. The head is then set to the largest consecutive seen index.
 	seenIdx := head & mask
+	seen := false
+	seenEnd := false
 	for i := seenIdx; i <= uint32(len(c.Entries)-1); i++ {
 		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+			seen = true
+		} else if !seenEnd {
+			seen = false
+			seenEnd = true
+		}
+		if seen == true && !seenEnd {
 			seenIdx = i
 		}
 		if c.Entries[i].UserData == userData {
@@ -296,8 +303,16 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	}
 	// Handle wrapping.
 	seenIdx = uint32(0)
+	seen = false
+	seenEnd = false
 	for i := uint32(0); i <= tail&mask; i++ {
 		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+			seen = true
+		} else if !seenEnd {
+			seen = false
+			seenEnd = true
+		}
+		if seen == true && !seenEnd {
 			seenIdx = i
 		}
 		if c.Entries[i].UserData == userData {
