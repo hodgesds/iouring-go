@@ -51,7 +51,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Open a file for registring with the ring.
+	// Open a file for registering with the ring.
 	f, err := os.OpenFile("hello.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
 		log.Fatal(err)
