@@ -204,7 +204,6 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 		}
 		// When the ring wraps restart.
 		atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
-		//atomic.CompareAndSwapUint32(r.sq.Head, head, 0)
 		goto getNext
 	}
 	// TODO handle pool based
