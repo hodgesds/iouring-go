@@ -1,7 +1,6 @@
 package iouring
 
 import (
-	"fmt"
 	"net"
 	"testing"
 
@@ -13,13 +12,12 @@ func TestSockoptListener(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	port := 9832
-	l, err := r.SockoptListener("tcp", fmt.Sprintf(":%d", port))
+	l, err := r.SockoptListener("tcp", ":9822")
 	require.NoError(t, err)
 	require.NotNil(t, l)
 
 	go func() {
-		conn2, err := net.Dial("tcp", fmt.Sprintf(":%d", port))
+		conn2, err := net.Dial("tcp", ":9822")
 		require.NoError(t, err)
 		require.NotNil(t, conn2)
 		require.NoError(t, conn2.Close())

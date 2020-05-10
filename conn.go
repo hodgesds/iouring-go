@@ -190,7 +190,6 @@ func (l *ringListener) onConn(conns map[uint64]*connInfo, cInfo *connInfo) {
 
 // onListen is called when processing a cqe for a listening socket.
 func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
-	println("LISTEN")
 	var (
 		rc          ringConn
 		newConnInfo connInfo
