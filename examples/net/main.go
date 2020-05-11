@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 
 	"github.com/hodgesds/iouring-go"
@@ -31,7 +30,6 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		log.Printf("%+v", req)
 		// The "/" pattern matches everything, so we need to check
 		// that we're at the root here.
 		if req.URL.Path != "/" {
@@ -41,12 +39,7 @@ func main() {
 		fmt.Fprintf(w, "hello io_uring!")
 	})
 
-	s := http.Server{
-		Handler: mux,
-		ConnState: func(conn net.Conn, state http.ConnState) {
-			fmt.Printf("conn: %+v, state: %+v\n", conn, state)
-		},
-	}
+	s := http.Server{Handler: mux}
 	if err := s.Serve(l); err != nil {
 		log.Fatal(err)
 	}

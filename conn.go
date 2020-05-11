@@ -19,11 +19,6 @@ const (
 
 	// TCPFastopen is the socket option to open a TCP fast open.
 	TCPFastopen int = 0x17
-
-	pollListen int = iota
-	pollConn
-	pollRead
-	pollWrite
 )
 
 // FastOpenAllowed return nil if fast open is enabled.
@@ -45,10 +40,9 @@ func FastOpenAllowed() error {
 }
 
 type connInfo struct {
-	fd       int
-	connType int
-	id       uint64
-	sqeIds   chan uint64
+	fd     int
+	id     uint64
+	sqeIds chan uint64
 }
 
 type addr struct {
@@ -80,9 +74,8 @@ func (l *ringListener) run() {
 	id := l.r.ID()
 	fd := int(l.f.Fd())
 	cInfo := &connInfo{
-		fd:       fd,
-		connType: pollListen,
-		id:       id,
+		fd: fd,
+		id: id,
 	}
 	sqe, commit := l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
@@ -92,14 +85,13 @@ func (l *ringListener) run() {
 	commit()
 
 	conns := map[uint64]*connInfo{id: cInfo}
-	cqSize := uint(1)
 
 	for {
 		select {
 		case <-l.stop:
 			return
 		default:
-			err := l.r.Enter(cqSize, 1, EnterGetEvents, nil)
+			err := l.r.Enter(1024, 1, EnterGetEvents, nil)
 			if err != nil {
 				// TODO: These errors should probably just be
 				// logged.
@@ -130,21 +122,16 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		}
 		if seen == true && !seenEnd {
 			seenIdx = i
+			continue
 		}
 		cInfo, ok := conns[l.r.cq.Entries[i].UserData]
 		if !ok {
 			continue
 		}
-		switch cInfo.connType {
-		case pollListen:
-			l.onListen(conns, cInfo)
-			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
-			return
-		case pollConn:
-			l.onConn(conns, cInfo)
-			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
-			return
-		}
+		l.r.cq.Entries[i].Flags |= CqSeenFlag
+		l.onListen(conns, cInfo)
+		atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
+		return
 	}
 
 	// Handle wrapping.
@@ -156,42 +143,23 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 			seen = true
 			// If something else has processed the CQE just
 			// continue.
-			continue
 		} else if !seenEnd {
 			seen = false
 			seenEnd = true
 		}
 		if seen == true && !seenEnd {
 			seenIdx = i
+			continue
 		}
 		cInfo, ok := conns[l.r.cq.Entries[i].UserData]
 		if !ok {
-			break
+			continue
 		}
-		switch cInfo.connType {
-		case pollListen:
-			l.onListen(conns, cInfo)
-			break
-		case pollConn:
-			l.onConn(conns, cInfo)
-			break
-		}
+		l.r.cq.Entries[i].Flags |= CqSeenFlag
+		l.onListen(conns, cInfo)
+		atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
+		return
 	}
-	atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
-}
-
-func (l *ringListener) onConn(conns map[uint64]*connInfo, cInfo *connInfo) {
-	// For new connections the ringListener first handles setting up the
-	// connection.
-	id := l.r.ID()
-	sqe, commit := l.r.SubmitEntry()
-	sqe.Opcode = ReadFixed
-	sqe.Fd = int32(cInfo.fd)
-	//sqe.Len = uint32(len(read))
-	//sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&read[0])))
-	sqe.UFlags = 0
-	sqe.UserData = id
-	commit()
 }
 
 // onListen is called when processing a cqe for a listening socket.
@@ -201,7 +169,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 		offset      int64
 		rc          = ringConn{
 			stop: make(chan struct{}, 2),
-			poll: make(chan struct{}, 128),
+			poll: make(chan struct{}),
 			r:    l.r,
 		}
 	)
@@ -398,7 +366,6 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 		return nil, err
 	}
 
-	r.debug = true
 	f := os.NewFile(uintptr(fd), "l")
 	l.f = f
 	go l.run()

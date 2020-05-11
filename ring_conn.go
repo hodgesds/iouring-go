@@ -2,7 +2,6 @@ package iouring
 
 import (
 	"net"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -23,11 +22,9 @@ type ringConn struct {
 
 // getCqe is used for getting a CQE result.
 func (c *ringConn) getCqe(reqID uint64) (int, error) {
-	if c.r.canEnter() {
-		err := c.r.Enter(uint(10), uint(1), EnterGetEvents, nil)
-		if err != nil {
-			return 0, err
-		}
+	err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
+	if err != nil {
+		return 0, err
 	}
 	cqe, err := c.r.cq.EntryBy(reqID)
 	if err != nil {
@@ -36,7 +33,10 @@ func (c *ringConn) getCqe(reqID uint64) (int, error) {
 	if cqe.Res < 0 {
 		return int(cqe.Res), syscall.Errno(cqe.Res)
 	}
-	atomic.StoreInt64(c.offset, atomic.LoadInt64(c.offset)+int64(cqe.Res))
+
+	//atomic.StoreInt64(c.offset, atomic.LoadInt64(c.offset)+int64(cqe.Res))
+	// Reenable the poll on the connection.
+	c.poll <- struct{}{}
 
 	return int(cqe.Res), nil
 }
@@ -45,6 +45,14 @@ func (c *ringConn) run() {
 	for {
 		select {
 		case <-c.stop:
+			id := c.r.ID()
+			sqe, commit := c.r.SubmitEntry()
+			sqe.Opcode = PollRemove
+			sqe.Fd = int32(c.fd)
+			sqe.UFlags = int32(pollin)
+			sqe.UserData = id
+			commit()
+			c.getCqe(id)
 			return
 		case <-c.poll:
 			id := c.r.ID()
@@ -70,7 +78,6 @@ func (c *ringConn) Read(b []byte) (n int, err error) {
 	sqe.Fd = int32(c.fd)
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
-	sqe.Offset = uint64(atomic.LoadInt64(c.offset))
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.
@@ -79,8 +86,6 @@ func (c *ringConn) Read(b []byte) (n int, err error) {
 
 	ready()
 
-	// Reenable the poll on the connection.
-	c.poll <- struct{}{}
 	return c.getCqe(reqID)
 }
 
@@ -95,7 +100,6 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 	sqe.Fd = int32(c.fd)
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
-	sqe.Offset = uint64(atomic.LoadInt64(c.offset))
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.
@@ -104,8 +108,6 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 
 	ready()
 
-	// Reenable the poll on the connection.
-	c.poll <- struct{}{}
 	return c.getCqe(reqID)
 }
 
