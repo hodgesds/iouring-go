@@ -120,7 +120,6 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		return
 	}
 
-	var newHead uint32
 	seenIdx := head & mask
 	seen := false
 	seenEnd := false
@@ -141,11 +140,11 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		switch cInfo.connType {
 		case pollListen:
 			l.onListen(conns, cInfo)
-			atomic.StoreUint32(l.r.cq.Head, newHead)
+			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
 			return
 		case pollConn:
 			l.onConn(conns, cInfo)
-			atomic.StoreUint32(l.r.cq.Head, newHead)
+			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
 			return
 		}
 	}
@@ -177,7 +176,7 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 			break
 		}
 	}
-	atomic.StoreUint32(l.r.cq.Head, seenIdx)
+	atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
 }
 
 func (l *ringListener) onConn(conns map[uint64]*connInfo, cInfo *connInfo) {
