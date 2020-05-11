@@ -15,11 +15,11 @@ import (
 const (
 	pollin = 0x0001
 
-	// SO_REUSEPORT is the socket option to reuse socket port.
-	SO_REUSEPORT int = 0x0F
+	// SOReuseport is the socket option to reuse socket port.
+	SOReuseport int = 0x0F
 
-	// TCP_FASTOPEN is the socket option to open a TCP fast open.
-	TCP_FASTOPEN int = 0x17
+	// TCPFastopen is the socket option to open a TCP fast open.
+	TCPFastopen int = 0x17
 
 	pollListen int = iota
 	pollConn
@@ -101,8 +101,11 @@ func (l *ringListener) run() {
 		case <-l.stop:
 			return
 		default:
-			if err := l.r.Enter(cqSize, 1, EnterGetEvents, nil); err != nil {
-				panic(err)
+			err := l.r.Enter(cqSize, 1, EnterGetEvents, nil)
+			if err != nil {
+				// TODO: These errors should probably just be
+				// logged.
+				panic(err.Error())
 			}
 			l.walkCq(conns)
 		}
@@ -201,8 +204,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 		newFd, sa, err := syscall.Accept4(cInfo.fd, syscall.SOCK_NONBLOCK)
 		if err != nil {
 			// TODO: Log this or something?
-			println(err.Error())
-			continue
+			panic(err.Error())
 		}
 		rc.r = l.r
 		rc.fd = newFd
@@ -368,16 +370,18 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 	}
 
 	for _, sockopt := range sockopts {
-		if sockopt == SO_REUSEPORT {
-			if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, sockopt, 1); err != nil {
+		if sockopt == SOReuseport {
+			err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, sockopt, 1)
+			if err != nil {
 				syscall.Close(fd)
 				return nil, err
 			}
-		} else if sockopt == TCP_FASTOPEN {
+		} else if sockopt == TCPFastopen {
 			if err := FastOpenAllowed(); err != nil {
 				return nil, err
 			}
-			if err := syscall.SetsockoptInt(fd, syscall.SOL_TCP, sockopt, 1); err != nil {
+			err = syscall.SetsockoptInt(fd, syscall.SOL_TCP, sockopt, 1)
+			if err != nil {
 				syscall.Close(fd)
 				return nil, err
 			}
