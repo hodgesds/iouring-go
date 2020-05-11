@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
-	"unsafe"
 )
 
 const (
@@ -49,7 +48,7 @@ type connInfo struct {
 	fd       int
 	connType int
 	id       uint64
-	reads    chan []byte
+	sqeIds   chan uint64
 }
 
 type addr struct {
@@ -85,7 +84,6 @@ func (l *ringListener) run() {
 		connType: pollListen,
 		id:       id,
 	}
-
 	sqe, commit := l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(fd)
@@ -156,6 +154,9 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	for i := uint32(0); i <= tail&mask; i++ {
 		if l.r.cq.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
 			seen = true
+			// If something else has processed the CQE just
+			// continue.
+			continue
 		} else if !seenEnd {
 			seen = false
 			seenEnd = true
@@ -180,29 +181,29 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 }
 
 func (l *ringListener) onConn(conns map[uint64]*connInfo, cInfo *connInfo) {
-	// for connections we add a sqe for the associated fd
-	read := <-cInfo.reads
-	if read == nil {
-		return
-	}
+	// For new connections the ringListener first handles setting up the
+	// connection.
+	id := l.r.ID()
 	sqe, commit := l.r.SubmitEntry()
 	sqe.Opcode = ReadFixed
 	sqe.Fd = int32(cInfo.fd)
-	sqe.Len = uint32(len(read))
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&read[0])))
+	//sqe.Len = uint32(len(read))
+	//sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&read[0])))
 	sqe.UFlags = 0
-	sqe.UserData = uint64(cInfo.fd)
+	sqe.UserData = id
 	commit()
 }
 
 // onListen is called when processing a cqe for a listening socket.
 func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	var (
-		rc          ringConn
 		newConnInfo connInfo
 		offset      int64
-		// This could deadlock.
-		reads = make(chan []byte, 256)
+		rc          = ringConn{
+			stop: make(chan struct{}, 2),
+			poll: make(chan struct{}, 128),
+			r:    l.r,
+		}
 	)
 	for {
 		// Wait for a new connection to arrive and add it to the ring.
@@ -211,13 +212,9 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 			// TODO: Log this or something?
 			panic(err.Error())
 		}
-		rc.r = l.r
 		rc.fd = newFd
 		rc.laddr = l.a
-		rc.reads = reads
-		rc.raddr = &addr{
-			net: l.a.net,
-		}
+		rc.raddr = &addr{net: l.a.net}
 		switch sockType := sa.(type) {
 		case *syscall.SockaddrInet4:
 			rc.raddr.s = fmt.Sprintf("%s:%d", sockType.Addr, sockType.Port)
@@ -227,12 +224,6 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 			rc.raddr.s = sockType.Name
 		}
 		rc.offset = &offset
-
-		newConnInfo.fd = rc.fd
-		newConnInfo.connType = pollConn
-		newConnInfo.id = l.r.ID()
-		newConnInfo.reads = reads
-		conns[newConnInfo.id] = &newConnInfo
 		break
 	}
 
@@ -243,6 +234,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	sqe.UFlags = int32(pollin)
 	sqe.UserData = newConnInfo.id
 	commit()
+	go rc.run()
 
 	// Add the old connection back as well.
 	delete(conns, cInfo.id)
@@ -406,6 +398,7 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 		return nil, err
 	}
 
+	r.debug = true
 	f := os.NewFile(uintptr(fd), "l")
 	l.f = f
 	go l.run()

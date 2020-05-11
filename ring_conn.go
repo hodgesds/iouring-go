@@ -17,7 +17,8 @@ type ringConn struct {
 	raddr  *addr
 	r      *Ring
 	offset *int64
-	reads  chan []byte
+	stop   chan struct{}
+	poll   chan struct{}
 }
 
 // getCqe is used for getting a CQE result.
@@ -40,31 +41,47 @@ func (c *ringConn) getCqe(reqID uint64) (int, error) {
 	return int(cqe.Res), nil
 }
 
+func (c *ringConn) run() {
+	for {
+		select {
+		case <-c.stop:
+			return
+		case <-c.poll:
+			id := c.r.ID()
+			sqe, commit := c.r.SubmitEntry()
+			sqe.Opcode = PollAdd
+			sqe.Fd = int32(c.fd)
+			sqe.UFlags = int32(pollin)
+			sqe.UserData = id
+			commit()
+			c.getCqe(id)
+		}
+	}
+}
+
 // Read implements the net.Conn interface.
 func (c *ringConn) Read(b []byte) (n int, err error) {
-	c.reads <- b
-	return c.getCqe(uint64(c.fd))
-	/*
-		sqe, ready := c.r.SubmitEntry()
-		if sqe == nil {
-			return 0, errors.New("ring unavailable")
-		}
+	sqe, ready := c.r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
 
-		sqe.Opcode = ReadFixed
-		sqe.Fd = int32(c.fd)
-		sqe.Len = uint32(len(b))
-		sqe.Flags = 0
-		sqe.Offset = uint64(atomic.LoadInt64(c.offset))
-		sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-		// Use reqId as user data so we can return the request from the
-		// completion queue.
-		reqID := c.r.ID()
-		sqe.UserData = reqID
+	sqe.Opcode = ReadFixed
+	sqe.Fd = int32(c.fd)
+	sqe.Len = uint32(len(b))
+	sqe.Flags = 0
+	sqe.Offset = uint64(atomic.LoadInt64(c.offset))
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	// Use reqId as user data so we can return the request from the
+	// completion queue.
+	reqID := c.r.ID()
+	sqe.UserData = reqID
 
-		ready()
+	ready()
 
-		return c.getCqe(reqID)
-	*/
+	// Reenable the poll on the connection.
+	c.poll <- struct{}{}
+	return c.getCqe(reqID)
 }
 
 // Write implements the net.Conn interface.
@@ -87,12 +104,14 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 
 	ready()
 
+	// Reenable the poll on the connection.
+	c.poll <- struct{}{}
 	return c.getCqe(reqID)
 }
 
 // Close implements the net.Conn interface.
 func (c *ringConn) Close() error {
-	close(c.reads)
+	c.stop <- struct{}{}
 	return syscall.Close(c.fd)
 }
 
