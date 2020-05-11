@@ -141,11 +141,14 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		switch cInfo.connType {
 		case pollListen:
 			l.onListen(conns, cInfo)
+			atomic.StoreUint32(l.r.cq.Head, newHead)
+			return
 		case pollConn:
 			l.onConn(conns, cInfo)
+			atomic.StoreUint32(l.r.cq.Head, newHead)
+			return
 		}
 	}
-	atomic.StoreUint32(l.r.cq.Head, newHead)
 
 	// Handle wrapping.
 	seenIdx = uint32(0)
@@ -163,16 +166,18 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		}
 		cInfo, ok := conns[l.r.cq.Entries[i].UserData]
 		if !ok {
-			continue
+			break
 		}
 		switch cInfo.connType {
 		case pollListen:
 			l.onListen(conns, cInfo)
+			break
 		case pollConn:
 			l.onConn(conns, cInfo)
+			break
 		}
 	}
-	atomic.StoreUint32(l.r.cq.Head, newHead)
+	atomic.StoreUint32(l.r.cq.Head, seenIdx)
 }
 
 func (l *ringListener) onConn(conns map[uint64]*connInfo, cInfo *connInfo) {
@@ -201,6 +206,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 		reads = make(chan []byte, 256)
 	)
 	for {
+		// Wait for a new connection to arrive and add it to the ring.
 		newFd, sa, err := syscall.Accept4(cInfo.fd, syscall.SOCK_NONBLOCK)
 		if err != nil {
 			// TODO: Log this or something?
@@ -251,6 +257,9 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	conns[id] = cInfo
 
 	// Wait for the new connection to be accepted.
+	// TODO: If this is unbuffered it will block, alternatively it could be
+	// sent in a separate goroutine to ensure the main ring code isn't
+	// blocking.
 	l.newConn <- &rc
 }
 

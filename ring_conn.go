@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// ringConn is a net.Conn that is backed by the Ring.
 type ringConn struct {
 	fd     int
 	laddr  *addr
