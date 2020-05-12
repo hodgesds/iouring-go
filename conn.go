@@ -169,7 +169,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 		offset      int64
 		rc          = ringConn{
 			stop: make(chan struct{}, 2),
-			poll: make(chan struct{}),
+			poll: make(chan uint64),
 			r:    l.r,
 		}
 	)

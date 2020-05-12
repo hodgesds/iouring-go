@@ -17,7 +17,7 @@ type ringConn struct {
 	r      *Ring
 	offset *int64
 	stop   chan struct{}
-	poll   chan struct{}
+	poll   chan uint64
 }
 
 // getCqe is used for getting a CQE result.
@@ -34,9 +34,15 @@ func (c *ringConn) getCqe(reqID uint64) (int, error) {
 		return int(cqe.Res), syscall.Errno(cqe.Res)
 	}
 
-	//atomic.StoreInt64(c.offset, atomic.LoadInt64(c.offset)+int64(cqe.Res))
 	// Reenable the poll on the connection.
-	c.poll <- struct{}{}
+	id := c.r.ID()
+	sqe, commit := c.r.SubmitEntry()
+	sqe.Opcode = PollAdd
+	sqe.Fd = int32(c.fd)
+	sqe.UFlags = int32(pollin)
+	sqe.UserData = id
+	commit()
+	c.poll <- id
 
 	return int(cqe.Res), nil
 }
@@ -54,14 +60,7 @@ func (c *ringConn) run() {
 			commit()
 			c.getCqe(id)
 			return
-		case <-c.poll:
-			id := c.r.ID()
-			sqe, commit := c.r.SubmitEntry()
-			sqe.Opcode = PollAdd
-			sqe.Fd = int32(c.fd)
-			sqe.UFlags = int32(pollin)
-			sqe.UserData = id
-			commit()
+		case id := <-c.poll:
 			c.getCqe(id)
 		}
 	}
