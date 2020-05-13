@@ -174,3 +174,10 @@ func TestConcurrentReaders(t *testing.T) {
 	wg.Wait()
 	close(stop)
 }
+
+func TestCqeIsZero(t *testing.T) {
+	cqe := &CompletionEntry{}
+	require.True(t, cqe.IsZero())
+	cqe.Res = 1
+	require.False(t, cqe.IsZero())
+}
