@@ -17,9 +17,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	r, err := iouring.New(8192, &iouring.Params{
-		//Flags: uint32(iouring.SetupIOPoll),
-	})
+	r, err := iouring.New(8192, &iouring.Params{})
 	if err != nil {
 		log.Fatal(err)
 	}
