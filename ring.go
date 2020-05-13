@@ -173,41 +173,37 @@ func (r *Ring) SubmitEntry() (*SubmitEntry, func()) {
 	// This function roughly follows this:
 	// https://github.com/axboe/liburing/blob/master/src/queue.c#L258
 
-	if r.p != nil && (uint(r.p.Flags)&SetupIOPoll == 0) {
-	getNext:
-		tail := atomic.LoadUint32(r.sq.Tail)
-		head := atomic.LoadUint32(r.sq.Head)
-		mask := atomic.LoadUint32(r.sq.Mask)
-		next := tail&mask + 1
-		if next <= uint32(len(r.sq.Entries)) {
-			// Make sure the ring is safe for updating by acquring the
-			// update barrier.
-			r.sq.updateBarrier()
-			if !atomic.CompareAndSwapUint32(r.sq.Tail, tail, next) {
-				goto getNext
-			}
-			// Increase the write counter as the caller will be
-			// updating the returned SubmitEntry.
-			r.sq.startWrite()
-
-			// The callback that is returned is used to update the
-			// state of the ring and decrement the active writes
-			// counter.
-			if r.debug {
-				fmt.Printf("next: %d\nsq array:%+v\n", next, r.sq.Array[:5])
-			}
-			return &r.sq.Entries[tail&mask], func() {
-				r.sq.completeWrite()
-				r.sq.fill()
-				r.sq.Array[next-1] = head & mask
-			}
+getNext:
+	tail := atomic.LoadUint32(r.sq.Tail)
+	head := atomic.LoadUint32(r.sq.Head)
+	mask := atomic.LoadUint32(r.sq.Mask)
+	next := tail&mask + 1
+	if next <= uint32(len(r.sq.Entries)) {
+		// Make sure the ring is safe for updating by acquring the
+		// update barrier.
+		r.sq.updateBarrier()
+		if !atomic.CompareAndSwapUint32(r.sq.Tail, tail, next) {
+			goto getNext
 		}
-		// When the ring wraps restart.
-		atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
-		goto getNext
+		// Increase the write counter as the caller will be
+		// updating the returned SubmitEntry.
+		r.sq.startWrite()
+
+		// The callback that is returned is used to update the
+		// state of the ring and decrement the active writes
+		// counter.
+		if r.debug {
+			fmt.Printf("next: %d\nsq array:%+v\n", next, r.sq.Array[:5])
+		}
+		return &r.sq.Entries[tail&mask], func() {
+			r.sq.completeWrite()
+			r.sq.fill()
+			r.sq.Array[next-1] = head & mask
+		}
 	}
-	// TODO handle pool based
-	return nil, func() {}
+	// When the ring wraps restart.
+	atomic.CompareAndSwapUint32(r.sq.Tail, tail, 0)
+	goto getNext
 }
 
 // ID returns an id for a SQEs, it is a monotonically increasing value (until

@@ -256,6 +256,11 @@ type CompletionEntry struct {
 	Flags    uint32
 }
 
+// IsZero returns if the CQE is zero valued.
+func (c *CompletionEntry) IsZero() bool {
+	return c.UserData == 0 && c.Res == 0 && c.Flags == 0
+}
+
 // CompletionQueue represents the completion queue ring buffer.
 type CompletionQueue struct {
 	Size     uint32
@@ -287,7 +292,8 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	seen := false
 	seenEnd := false
 	for i := seenIdx; i <= uint32(len(c.Entries)-1); i++ {
-		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+		cqe := c.Entries[i]
+		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
 			seen = true
 		} else if !seenEnd {
 			seen = false
@@ -307,7 +313,8 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	seen = false
 	seenEnd = false
 	for i := uint32(0); i <= tail&mask; i++ {
-		if c.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+		cqe := c.Entries[i]
+		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
 			seen = true
 		} else if !seenEnd {
 			seen = false

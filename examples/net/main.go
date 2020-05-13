@@ -17,16 +17,22 @@ func init() {
 
 func main() {
 	flag.Parse()
-	r, err := iouring.New(8192, nil)
+	r, err := iouring.New(8192, &iouring.Params{
+		//Flags: uint32(iouring.SetupIOPoll),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Printf("port: %d\n", port)
-	l, err := r.SockoptListener("tcp", fmt.Sprintf(":%d", port))
+	l, err := r.SockoptListener(
+		"tcp",
+		fmt.Sprintf(":%d", port),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer l.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {

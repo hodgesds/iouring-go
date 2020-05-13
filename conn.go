@@ -61,6 +61,7 @@ func (a *addr) String() string {
 }
 
 type ringListener struct {
+	debug   bool
 	r       *Ring
 	f       *os.File
 	a       *addr
@@ -91,7 +92,7 @@ func (l *ringListener) run() {
 		case <-l.stop:
 			return
 		default:
-			err := l.r.Enter(1024, 1, EnterGetEvents, nil)
+			err := l.r.Enter(1, 1, EnterGetEvents, nil)
 			if err != nil {
 				// TODO: These errors should probably just be
 				// logged.
@@ -113,8 +114,19 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	seenIdx := head & mask
 	seen := false
 	seenEnd := false
+	if l.debug {
+		sqHead := *l.r.sq.Head
+		sqTail := *l.r.sq.Tail
+		sqMask := *l.r.sq.Mask
+		cqHead := *l.r.cq.Head
+		cqTail := *l.r.cq.Tail
+		cqMask := *l.r.cq.Mask
+		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, l.r.sq.Entries[:9])
+		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, l.r.cq.Entries[:9])
+	}
 	for i := seenIdx; i <= uint32(len(l.r.cq.Entries)-1); i++ {
-		if l.r.cq.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+		cqe := l.r.cq.Entries[i]
+		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
 			seen = true
 		} else if !seenEnd {
 			seen = false
@@ -124,7 +136,7 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 			seenIdx = i
 			continue
 		}
-		cInfo, ok := conns[l.r.cq.Entries[i].UserData]
+		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
@@ -139,7 +151,8 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	seen = false
 	seenEnd = false
 	for i := uint32(0); i <= tail&mask; i++ {
-		if l.r.cq.Entries[i].Flags&CqSeenFlag == CqSeenFlag {
+		cqe := l.r.cq.Entries[i]
+		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
 			seen = true
 			// If something else has processed the CQE just
 			// continue.
@@ -151,7 +164,7 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 			seenIdx = i
 			continue
 		}
-		cInfo, ok := conns[l.r.cq.Entries[i].UserData]
+		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
