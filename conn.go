@@ -94,7 +94,7 @@ func (l *ringListener) run() {
 		case <-l.stop:
 			return
 		default:
-			err := l.r.Enter(1, 1, EnterGetEvents, nil)
+			err := l.r.Enter(1024, 1, EnterGetEvents, nil)
 			if err != nil {
 				// TODO: These errors should probably just be
 				// logged.
@@ -126,7 +126,7 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, l.r.sq.Entries[:9])
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, l.r.cq.Entries[:9])
 	}
-	for i := seenIdx; i <= uint32(len(l.r.cq.Entries)-1); i++ {
+	for i := seenIdx; i <= tail&mask; i++ {
 		cqe := l.r.cq.Entries[i]
 		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
 			seen = true
@@ -136,15 +136,14 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		}
 		if seen == true && !seenEnd {
 			seenIdx = i
-			continue
 		}
 		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
 		l.r.cq.Entries[i].Flags |= CqSeenFlag
+		atomic.StoreUint32(l.r.cq.Head, seenIdx)
 		l.onListen(conns, cInfo)
-		atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
 		return
 	}
 
@@ -152,6 +151,8 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	seenIdx = uint32(0)
 	seen = false
 	seenEnd = false
+	tail = atomic.LoadUint32(l.r.cq.Tail)
+	mask = atomic.LoadUint32(l.r.cq.Mask)
 	for i := uint32(0); i <= tail&mask; i++ {
 		cqe := l.r.cq.Entries[i]
 		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
@@ -164,15 +165,14 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 		}
 		if seen == true && !seenEnd {
 			seenIdx = i
-			continue
 		}
 		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
 		l.r.cq.Entries[i].Flags |= CqSeenFlag
+		atomic.StoreUint32(l.r.cq.Head, seenIdx)
 		l.onListen(conns, cInfo)
-		atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
 		return
 	}
 }
@@ -184,7 +184,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 		offset      int64
 		rc          = ringConn{
 			stop: make(chan struct{}, 2),
-			poll: make(chan uint64),
+			poll: make(chan uint64, 64),
 			r:    l.r,
 		}
 	)
@@ -217,6 +217,8 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	sqe.UFlags = int32(pollin)
 	sqe.UserData = newConnInfo.id
 	commit()
+	ready := int32(1)
+	rc.pollReady = &ready
 	go rc.run()
 
 	// Add the old connection back as well.
