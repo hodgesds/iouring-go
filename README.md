@@ -24,13 +24,6 @@ atomics](https://github.com/golang/go/issues/5045) which can make it difficult
 to use `sync/atomic` in all situations. If certain IO operations are to be
 carriered out in a specific order then this becomes a real challenge.
 
-The current approach is to use a FSM that uses atomics for synchronization.
-Once a ring is "filled" (no writes occuring to any memory locations in the 
-mmap'd sumission queue) then the ring may be submitted. This design is not
-final and this library is far from ready for general use.
-
-![ring states](./ring_states.svg)
-
 ## Completion Queue
 Completion queues have the difficulty of many concurrent readers which
 need to synchronize updating the position of the head. Currently there

@@ -3,6 +3,7 @@ package iouring
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -43,8 +44,9 @@ func New(size uint, p *Params) (*Ring, error) {
 		return nil, err
 	}
 	idx := uint64(0)
-	sqState := RingStateEmpty
-	sq.state = &sqState
+	entered := uint32(0)
+	sq.entered = &entered
+
 	sq.writes = &sqWrites
 	return &Ring{
 		p:       p,
@@ -59,23 +61,22 @@ func New(size uint, p *Params) (*Ring, error) {
 // Enter is used to enter the ring.
 func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
 	// Acquire the submit barrier so that the ring can safely be entered.
-	r.sq.submitBarrier()
 	if r.sq.NeedWakeup() {
 		flags |= EnterSqWakeup
 	}
+	// Increase the write counter as the caller will be
+	// updating the returned SubmitEntry.
+	r.sq.enterLock()
 	// TODO: Document how sigset should be used in relation with the go runtime and
 	// io_uring_enter.
 	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
+	r.sq.enterUnlock()
 	if err != nil {
-		// TODO(hodgesds): are certain errors able to empty the ring?
-		r.sq.fill()
 		return err
 	}
 	if uint(completed) < toSubmit {
-		r.sq.fill()
 		return nil
 	}
-	r.sq.empty()
 	return nil
 }
 
@@ -183,13 +184,15 @@ getNext:
 	if next <= uint32(len(r.sq.Entries)) {
 		// Make sure the ring is safe for updating by acquring the
 		// update barrier.
-		r.sq.updateBarrier()
 		if !atomic.CompareAndSwapUint32(r.sq.Tail, tail, next) {
+			runtime.Gosched()
 			goto getNext
 		}
-		// Increase the write counter as the caller will be
-		// updating the returned SubmitEntry.
-		r.sq.startWrite()
+		if atomic.LoadUint32(r.sq.entered) != 0 {
+			runtime.Gosched()
+			goto getNext
+		}
+		atomic.AddUint32(r.sq.writes, 1)
 
 		// The callback that is returned is used to update the
 		// state of the ring and decrement the active writes
@@ -199,7 +202,6 @@ getNext:
 		}
 		return &r.sq.Entries[tail&mask], func() {
 			r.sq.completeWrite()
-			r.sq.fill()
 			r.sq.Array[next-1] = head & mask
 		}
 	}

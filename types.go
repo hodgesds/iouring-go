@@ -135,9 +135,8 @@ type SubmitQueue struct {
 	// ptr is pointer to the start of the mmap.
 	ptr uintptr
 
-	// state is used for the state machine of the submit buffer for use as
-	// a memory barrier.
-	state *uint32
+	// entered is when the ring is being entered.
+	entered *uint32
 	// writes is used to keep track of the number of concurrent writers to
 	// the ring.
 	writes *uint32
@@ -155,8 +154,19 @@ func (s *SubmitQueue) NeedWakeup() bool {
 	return atomic.LoadUint32(s.Flags)&SqNeedWakeup != 0
 }
 
-func (s *SubmitQueue) startWrite() {
-	atomic.AddUint32(s.writes, 1)
+func (s *SubmitQueue) enterLock() {
+	for {
+		if atomic.LoadUint32(s.writes) != 0 && atomic.LoadUint32(s.entered) == 1 {
+			runtime.Gosched()
+			continue
+		}
+		atomic.StoreUint32(s.entered, 1)
+		break
+	}
+}
+
+func (s *SubmitQueue) enterUnlock() {
+	atomic.StoreUint32(s.entered, 0)
 }
 
 // completeWrite is used to signal that an entry in the map has been fully
@@ -171,83 +181,6 @@ func (s *SubmitQueue) completeWrite() {
 			return
 		}
 		runtime.Gosched()
-	}
-}
-
-// submitBarrier is used to prevent updating the submit queue while the queue
-// is being entered.
-func (s *SubmitQueue) submitBarrier() {
-	for {
-		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateFilled, RingStateEmpty:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateWriting) {
-				return
-			}
-		case RingStateUpdating, RingStateWriting:
-			runtime.Gosched()
-		default:
-			panic(fmt.Sprintf(
-				"invalid use of submit barrier from state: %+v",
-				RingState(state).String(),
-			))
-
-		}
-	}
-}
-
-// updateBarrier is used to wait for the ring to be in a state to be updated.
-func (s *SubmitQueue) updateBarrier() {
-	for {
-		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateUpdating:
-			return
-		case RingStateFilled, RingStateEmpty:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateUpdating) {
-				return
-			}
-		}
-		runtime.Gosched()
-	}
-}
-
-func (s *SubmitQueue) fill() {
-	for {
-		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateUpdating:
-			// Wait for all writes to complete before filling.
-			if writes := atomic.LoadUint32(s.writes); writes > 0 {
-				runtime.Gosched()
-				continue
-			}
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
-				return
-			}
-		case RingStateWriting:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateFilled) {
-				return
-			}
-		case RingStateFilled:
-			return
-		default:
-			runtime.Gosched()
-		}
-	}
-}
-
-// empty is used for transitioning the ring state after all submitted entries
-// have been complete.
-func (s *SubmitQueue) empty() {
-	for {
-		switch state := atomic.LoadUint32(s.state); state {
-		case RingStateWriting, RingStateFilled:
-			if atomic.CompareAndSwapUint32(s.state, state, RingStateEmpty) {
-				return
-			}
-		case RingStateEmpty:
-			return
-		default:
-			runtime.Gosched()
-		}
 	}
 }
 
@@ -372,7 +305,6 @@ func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
 		cqHead := *i.r.cq.Head
 		cqTail := *i.r.cq.Tail
 		cqMask := *i.r.cq.Mask
-		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
 		fmt.Printf("sq array: %+v\n", i.r.sq.Array)
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
@@ -459,7 +391,6 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 		fmt.Printf("pre enter\n")
 		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
-		fmt.Printf("sq state: %+v\n", *i.r.sq.state)
 	}
 
 	return i.getCqe(reqID, true)

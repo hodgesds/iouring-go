@@ -1,9 +1,0 @@
-digraph G {
-  Empty    -> Updating
-  Updating -> Filled
-  Updating -> Updating
-  Filled   -> Writing
-  Filled   -> Updating
-  Writing  -> Filled
-  Writing  -> Empty
-}
