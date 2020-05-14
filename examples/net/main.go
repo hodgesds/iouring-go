@@ -22,10 +22,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("port: %d\n", port)
+	fmt.Printf("THIS PROBABLY WILL FAIL!!!\nlistening on port: %d\n", port)
 	l, err := r.SockoptListener(
 		"tcp",
 		fmt.Sprintf(":%d", port),
+		iouring.SOReuseport,
 	)
 	if err != nil {
 		log.Fatal(err)

@@ -63,6 +63,8 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	if r.sq.NeedWakeup() {
 		flags |= EnterSqWakeup
 	}
+	// TODO: Document how sigset should be used in relation with the go runtime and
+	// io_uring_enter.
 	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
 	if err != nil {
 		// TODO(hodgesds): are certain errors able to empty the ring?
