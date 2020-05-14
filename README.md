@@ -1,15 +1,14 @@
 # `io_uring` Go 
+[![GoDoc](https://godoc.org/github.com/hodgesds/iouring-go?status.svg)](https://godoc.org/github.com/hodgesds/iouring-go)
+
 **WORK IN PROGRESS** This library adds support for [`io_uring`](https://kernel.dk/io_uring.pdf) for
 Go. This library is similar to [liburing](https://github.com/axboe/liburing).
 If you want to contribute feel free to send PRs or emails, there's plenty of
 things that need cleaned up.
 
-### General Steps
-1) Create the `io_uring` buffers
-2) Setup mmap for both ring buffers
-3) Submit requests, this is done through another system call.
-
 # Interacting with the Submit/Completion Queues
+
+## Submission Queue
 The submission and completion queues are both mmap'd as slices, the question
 then becomes how to design an efficient API that is also able to interact with
 many of the standard library interfaces. One choice is to run a background
@@ -32,8 +31,18 @@ final and this library is far from ready for general use.
 
 ![ring states](./ring_states.svg)
 
-## Example
-Here is a minimal example to get started:
+## Completion Queue
+Completion queues have the difficulty of many concurrent readers which
+need to synchronize updating the position of the head. Currently there
+is no solution that isn't racey or without significant overhead. The
+current approach sets a bit on the `Flags` of each CQE and while searching
+for the desired CSE keeps track of the index where all prior values have
+been **seen**. This is currently racey and at some point will be removed
+for another approach.
+
+
+# Example
+Here is a minimal example to get started that writes to a file using a ring:
 
 ```
 package main
