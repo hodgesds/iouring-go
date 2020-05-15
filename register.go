@@ -28,6 +28,26 @@ func RegisterEventFd(ringFd int, fd int) error {
 	return nil
 }
 
+// RegisterEventFdAsync is used to register an event file descriptor for async
+// polling on a ring.
+func RegisterEventFdAsync(ringFd int, fd int) error {
+	_, _, errno := syscall.Syscall6(
+		RegisterSyscall,
+		uintptr(ringFd),
+		uintptr(RegRegisterEventFdAsync),
+		uintptr(fd),
+		uintptr(1),
+		uintptr(0),
+		uintptr(0),
+	)
+	if errno < 0 {
+		var err error
+		err = errno
+		return err
+	}
+	return nil
+}
+
 // UnregisterEventFd is used to unregister a file descriptor to a ring.
 func UnregisterEventFd(ringFd int, fd int) error {
 	_, _, errno := syscall.Syscall6(
