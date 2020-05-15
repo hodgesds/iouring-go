@@ -149,7 +149,7 @@ const (
 	RegUnregisterBuffers     = 1
 	RegRegisterFiles         = 2
 	RegUnregisterFiles       = 3
-	RegRegisterEventfd       = 4
+	RegRegisterEventFd       = 4
 	RegUnregisterEventfd     = 5
 	RegRegisterFilesUpdate   = 6
 	RegRegisterEventFdAsync  = 7

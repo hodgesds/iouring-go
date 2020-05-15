@@ -9,6 +9,44 @@ import (
 	"unsafe"
 )
 
+// RegisterEventFd is used to register an event file descriptor to a ring.
+func RegisterEventFd(ringFd int, fd int) error {
+	_, _, errno := syscall.Syscall6(
+		RegisterSyscall,
+		uintptr(ringFd),
+		uintptr(RegRegisterEventFd),
+		uintptr(fd),
+		uintptr(1),
+		uintptr(0),
+		uintptr(0),
+	)
+	if errno < 0 {
+		var err error
+		err = errno
+		return err
+	}
+	return nil
+}
+
+// UnregisterEventFd is used to unregister a file descriptor to a ring.
+func UnregisterEventFd(ringFd int, fd int) error {
+	_, _, errno := syscall.Syscall6(
+		RegisterSyscall,
+		uintptr(ringFd),
+		uintptr(RegRegisterEventFd),
+		uintptr(0),
+		uintptr(0),
+		uintptr(0),
+		uintptr(0),
+	)
+	if errno < 0 {
+		var err error
+		err = errno
+		return err
+	}
+	return nil
+}
+
 // RegisterBuffers is used to register buffers to a ring.
 func RegisterBuffers(fd int, vecs []*syscall.Iovec) error {
 	_, _, errno := syscall.Syscall6(
@@ -28,7 +66,7 @@ func RegisterBuffers(fd int, vecs []*syscall.Iovec) error {
 	return nil
 }
 
-// UnregisterBuffers is used to unregister files to a ring.
+// UnregisterBuffers is used to unregister iovecs from a ring.
 func UnregisterBuffers(fd int, vecs []*syscall.Iovec) error {
 	_, _, errno := syscall.Syscall6(
 		RegisterSyscall,
