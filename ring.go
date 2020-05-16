@@ -26,6 +26,8 @@ type Ring struct {
 	idx     *uint64
 	debug   bool
 	fileReg FileRegistry
+
+	eventFd int
 }
 
 // New is used to create an iouring.Ring.
@@ -57,6 +59,7 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 		sq:      &sq,
 		idx:     &idx,
 		fileReg: NewFileRegistry(fd),
+		eventFd: -1,
 	}
 	for _, opt := range opts {
 		if err := opt(r); err != nil {
@@ -65,6 +68,12 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 	}
 
 	return r, nil
+}
+
+// EventFd returns the file descriptor of the eventfd if it is set, otherwise
+// it returns the default value of -1.
+func (r *Ring) EventFd() int {
+	return r.eventFd
 }
 
 // Enter is used to enter the ring.
