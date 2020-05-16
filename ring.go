@@ -1,3 +1,5 @@
+// +build linux
+
 package iouring
 
 import (
@@ -27,7 +29,7 @@ type Ring struct {
 }
 
 // New is used to create an iouring.Ring.
-func New(size uint, p *Params) (*Ring, error) {
+func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 	if p == nil {
 		p = &Params{}
 	}
@@ -48,14 +50,21 @@ func New(size uint, p *Params) (*Ring, error) {
 	sq.entered = &entered
 
 	sq.writes = &sqWrites
-	return &Ring{
+	r := &Ring{
 		p:       p,
 		fd:      fd,
 		cq:      &cq,
 		sq:      &sq,
 		idx:     &idx,
 		fileReg: NewFileRegistry(fd),
-	}, nil
+	}
+	for _, opt := range opts {
+		if err := opt(r); err != nil {
+			return nil, err
+		}
+	}
+
+	return r, nil
 }
 
 // Enter is used to enter the ring.
