@@ -252,9 +252,13 @@ func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
 	if o, err := f.Seek(0, 0); err == nil {
 		offset = int64(o)
 	}
-	return &ringFIO{
+	rw := &ringFIO{
 		r:       r,
 		f:       f,
 		fOffset: &offset,
-	}, r.fileReg.Register(int(f.Fd()))
+	}
+	if r.fileReg == nil {
+		return rw, nil
+	}
+	return rw, r.fileReg.Register(int(f.Fd()))
 }
