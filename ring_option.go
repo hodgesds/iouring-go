@@ -9,14 +9,6 @@ import (
 // RingOption is an option for configuring a Ring.
 type RingOption func(*Ring) error
 
-// WithFileRegistry is used to configure a FileRegistry for use with a Ring.
-func WithFileRegistry(reg FileRegistry) RingOption {
-	return func(r *Ring) error {
-		r.fileReg = reg
-		return nil
-	}
-}
-
 // WithDebug is used to print additional debug information.
 func WithDebug() RingOption {
 	return func(r *Ring) error {
@@ -25,14 +17,27 @@ func WithDebug() RingOption {
 	}
 }
 
-// WithEventFd is used to add an eventfd to the Ring.
-func WithEventFd(initval uint, flags int) RingOption {
+// WithEventFd is used to create an eventfd and register it to the Ring.
+// The event fd can be accessed using the EventFd method.
+func WithEventFd(initval uint, flags int, async bool) RingOption {
 	return func(r *Ring) error {
 		fd, err := unix.Eventfd(initval, flags)
 		if err != nil {
 			return err
 		}
 		r.eventFd = fd
+		if async {
+			return RegisterEventFdAsync(r.fd, fd)
+		}
+		return RegisterEventFd(r.fd, fd)
+	}
+}
+
+// WithFileRegistry is used to register a FileRegistry with the Ring. The
+// registery can be accessed with the FileRegistry method on the ring.
+func WithFileRegistry() RingOption {
+	return func(r *Ring) error {
+		r.fileReg = NewFileRegistry(r.fd)
 		return nil
 	}
 }

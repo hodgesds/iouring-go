@@ -15,9 +15,8 @@ func TestRegisterBuffers(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 	vecs := make([]*syscall.Iovec, 10)
-	require.NoError(t, RegisterBuffers(r.FD(), vecs))
-	require.NoError(t, UnregisterBuffers(r.FD(), vecs))
-	// Should probably check with kernel folks about this failing.
+	require.NoError(t, RegisterBuffers(r.Fd(), vecs))
+	require.NoError(t, UnregisterBuffers(r.Fd(), vecs))
 	// require.Error(t, RegisterBuffers(-1, vecs))
 	// require.Error(t, UnregisterBuffers(-1, vecs))
 }
@@ -27,7 +26,7 @@ func TestFileRegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	reg := NewFileRegistry(r.FD())
+	reg := NewFileRegistry(r.Fd())
 	f, err := ioutil.TempFile("", "test-file-registry")
 	require.NoError(t, err)
 	f2, err := ioutil.TempFile("", "test-file-registry")

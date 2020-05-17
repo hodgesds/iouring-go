@@ -234,9 +234,14 @@ func (r *Ring) ID() uint64 {
 	return atomic.AddUint64(r.idx, 1)
 }
 
-// FD returns the fd of the ring.
-func (r *Ring) FD() int {
+// Fd returns the file descriptor of the ring.
+func (r *Ring) Fd() int {
 	return r.fd
+}
+
+// FileRegistry returns the FileRegistry for the Ring.
+func (r *Ring) FileRegistry() FileRegistry {
+	return r.fileReg
 }
 
 // FileReadWriter returns an io.ReadWriter from an os.File that uses the ring.
