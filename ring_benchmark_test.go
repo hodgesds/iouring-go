@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -77,9 +78,13 @@ func benchmarkFileWrite(b *testing.B, writeSize int) {
 		fmt.Sprintf("os-file-write-%d", writeSize),
 		func(b *testing.B) {
 			data := make([]byte, writeSize)
-			rand.Read(data)
+			n, err := rand.Read(data)
+			require.NoError(b, err)
+			require.Equal(b, writeSize, int(n))
 
-			f, err := ioutil.TempFile("", "example")
+			f, err := os.OpenFile(
+				fmt.Sprintf("os-file-write-%d.test", writeSize),
+				syscall.O_DIRECT|os.O_RDWR|os.O_CREATE, 0644)
 			require.NoError(b, err)
 			defer os.Remove(f.Name())
 
