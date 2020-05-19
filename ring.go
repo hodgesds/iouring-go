@@ -70,6 +70,16 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 	return r, nil
 }
 
+// CQ returns the CompletionQueue for the ring.
+func (r *Ring) CQ() *CompletionQueue {
+	return r.cq
+}
+
+// SQ returns the SubmitQueue for the ring.
+func (r *Ring) SQ() *SubmitQueue {
+	return r.sq
+}
+
 // EventFd returns the file descriptor of the eventfd if it is set, otherwise
 // it returns the default value of -1.
 func (r *Ring) EventFd() int {
