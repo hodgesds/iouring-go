@@ -92,8 +92,8 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	if err != nil {
 		return err
 	}
-	if uint(completed) < toSubmit {
-		return nil
+	if completed < 0 {
+		return fmt.Errorf("%d", completed)
 	}
 	return nil
 }
