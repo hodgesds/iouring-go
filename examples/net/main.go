@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/hodgesds/iouring-go"
@@ -17,12 +18,16 @@ func init() {
 
 func main() {
 	flag.Parse()
-	r, err := iouring.New(8192, &iouring.Params{})
+	r, err := iouring.New(
+		8192, &iouring.Params{},
+		iouring.WithDebug(),
+		iouring.WithID(100000),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("THIS PROBABLY WILL FAIL!!!\nlistening on port: %d\n", port)
+	fmt.Printf("listening on port: %d\n", port)
 	l, err := r.SockoptListener(
 		"tcp",
 		fmt.Sprintf(":%d", port),
@@ -41,10 +46,17 @@ func main() {
 			http.NotFound(w, req)
 			return
 		}
-		fmt.Fprintf(w, "hello io_uring!")
+		fmt.Fprintf(w, "hello io_uring!\n")
 	})
 
-	s := http.Server{Handler: mux}
+	s := http.Server{
+		Handler: mux,
+		//ReadTimeout:  1 * time.Second,
+		//WriteTimeout: 1 * time.Second,
+		ConnState: func(c net.Conn, s http.ConnState) {
+			fmt.Printf("conn: %+v, %+v\n", c, s)
+		},
+	}
 	if err := s.Serve(l); err != nil {
 		log.Fatal(err)
 	}

@@ -41,3 +41,12 @@ func WithFileRegistry() RingOption {
 		return nil
 	}
 }
+
+// WithID is used to set the starting id for the monotonically increasing ID
+// method.
+func WithID(id uint64) RingOption {
+	return func(r *Ring) error {
+		r.idx = &id
+		return nil
+	}
+}

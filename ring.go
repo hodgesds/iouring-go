@@ -87,7 +87,7 @@ func (r *Ring) EventFd() int {
 }
 
 // Enter is used to enter the ring.
-func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) error {
+func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.Sigset_t) (int, error) {
 	// Acquire the submit barrier so that the ring can safely be entered.
 	if r.sq.NeedWakeup() {
 		flags |= EnterSqWakeup
@@ -100,12 +100,9 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
 	r.sq.enterUnlock()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if completed < 0 {
-		return fmt.Errorf("%d", completed)
-	}
-	return nil
+	return completed, nil
 }
 
 func (r *Ring) canEnter() bool {
@@ -226,7 +223,7 @@ getNext:
 		// state of the ring and decrement the active writes
 		// counter.
 		if r.debug {
-			fmt.Printf("next: %d\nsq array:%+v\n", next, r.sq.Array[:5])
+			fmt.Printf("sq array:%+v\n", r.sq.Array[:9])
 		}
 		return &r.sq.Entries[tail&mask], func() {
 			r.sq.completeWrite()

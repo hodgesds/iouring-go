@@ -33,12 +33,13 @@ type ringConn struct {
 
 // getCqe is used for getting a CQE result.
 func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
+	defer c.rePoll()
 	// TODO: Where should this repoll go?
-	c.rePoll()
-	err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
+	_, err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
 	if err != nil {
 		return 0, err
 	}
+	c.stop <- struct{}{}
 	var cqe *CompletionEntry
 	for {
 		select {
@@ -55,17 +56,15 @@ func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
 			}
 			return 0, err
 		}
-		if cqe.Res < 0 {
-			return 0, syscall.Errno(cqe.Res)
-		}
 		break
 	}
 
+	c.rePoll()
 	return int(cqe.Res), nil
 }
 
 func (c *ringConn) rePoll() {
-	atomic.StoreInt32(c.pollReady, 0)
+	//atomic.StoreInt32(c.pollReady, 0)
 	// Reenable the poll on the connection.
 	id := c.r.ID()
 	sqe, commit := c.r.SubmitEntry()
@@ -74,7 +73,8 @@ func (c *ringConn) rePoll() {
 	sqe.UFlags = int32(pollin)
 	sqe.UserData = id
 	commit()
-	c.poll <- id
+	c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
+	//c.poll <- id
 }
 
 func (c *ringConn) run() {
@@ -91,7 +91,7 @@ func (c *ringConn) run() {
 			c.getCqe(context.Background(), id)
 			return
 		case id := <-c.poll:
-			err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
+			_, err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
 			atomic.StoreInt32(c.pollReady, 1)
 			if err != nil {
 				continue
@@ -143,7 +143,7 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 	sqe.Opcode = WriteFixed
 	sqe.Fd = int32(c.fd)
 	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
+	//sqe.Flags = 0
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.

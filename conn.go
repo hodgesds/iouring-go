@@ -94,7 +94,7 @@ func (l *ringListener) run() {
 		case <-l.stop:
 			return
 		default:
-			err := l.r.Enter(1024, 1, EnterGetEvents, nil)
+			_, err := l.r.Enter(1024, 1, EnterGetEvents, nil)
 			if err != nil {
 				// TODO: These errors should probably just be
 				// logged.
@@ -114,7 +114,6 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	}
 
 	seenIdx := head & mask
-	seen := false
 	seenEnd := false
 	if l.debug {
 		sqHead := *l.r.sq.Head
@@ -128,50 +127,45 @@ func (l *ringListener) walkCq(conns map[uint64]*connInfo) {
 	}
 	for i := seenIdx; i <= tail&mask; i++ {
 		cqe := l.r.cq.Entries[i]
-		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
-			seen = true
-		} else if !seenEnd {
-			seen = false
-			seenEnd = true
-		}
-		if seen == true && !seenEnd {
+		if (cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero()) && !seenEnd {
 			seenIdx = i
+		} else {
+			seenEnd = true
 		}
 		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
 		l.r.cq.Entries[i].Flags |= CqSeenFlag
-		atomic.StoreUint32(l.r.cq.Head, seenIdx)
+		head = atomic.LoadUint32(l.r.cq.Head)
+		if seenIdx > head {
+			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
+		}
 		l.onListen(conns, cInfo)
 		return
 	}
 
 	// Handle wrapping.
 	seenIdx = uint32(0)
-	seen = false
 	seenEnd = false
 	tail = atomic.LoadUint32(l.r.cq.Tail)
 	mask = atomic.LoadUint32(l.r.cq.Mask)
 	for i := uint32(0); i <= tail&mask; i++ {
 		cqe := l.r.cq.Entries[i]
-		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
-			seen = true
-			// If something else has processed the CQE just
-			// continue.
-		} else if !seenEnd {
-			seen = false
-			seenEnd = true
-		}
-		if seen == true && !seenEnd {
+		if (cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero()) && !seenEnd {
 			seenIdx = i
+		} else {
+			seenEnd = true
 		}
 		cInfo, ok := conns[cqe.UserData]
 		if !ok {
 			continue
 		}
 		l.r.cq.Entries[i].Flags |= CqSeenFlag
-		atomic.StoreUint32(l.r.cq.Head, seenIdx)
+		head = atomic.LoadUint32(l.r.cq.Head)
+		if seenIdx > head {
+			atomic.CompareAndSwapUint32(l.r.cq.Head, head, seenIdx)
+		}
 		l.onListen(conns, cInfo)
 		return
 	}
@@ -222,15 +216,12 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	go rc.run()
 
 	// Add the old connection back as well.
-	delete(conns, cInfo.id)
-	id := l.r.ID()
 	sqe, commit = l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(cInfo.fd)
 	sqe.UFlags = int32(pollin)
-	sqe.UserData = id
+	sqe.UserData = uint64(cInfo.fd)
 	commit()
-	conns[id] = cInfo
 
 	// Wait for the new connection to be accepted.
 	// TODO: If this is unbuffered it will block, alternatively it could be
@@ -267,7 +258,7 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 		r:       r,
 		a:       &addr{net: network},
 		stop:    make(chan struct{}),
-		newConn: make(chan net.Conn, 1024),
+		newConn: make(chan net.Conn),
 		connGet: make(chan chan net.Conn),
 	}
 
@@ -385,6 +376,7 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 
 	f := os.NewFile(uintptr(fd), "l")
 	l.f = f
+	l.debug = r.debug
 	go l.run()
 
 	return l, nil
