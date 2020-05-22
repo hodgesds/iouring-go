@@ -6,7 +6,6 @@ import (
 	"context"
 	"net"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -59,12 +58,11 @@ func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
 		break
 	}
 
-	c.rePoll()
+	//c.rePoll()
 	return int(cqe.Res), nil
 }
 
 func (c *ringConn) rePoll() {
-	//atomic.StoreInt32(c.pollReady, 0)
 	// Reenable the poll on the connection.
 	id := c.r.ID()
 	sqe, commit := c.r.SubmitEntry()
@@ -74,7 +72,6 @@ func (c *ringConn) rePoll() {
 	sqe.UserData = id
 	commit()
 	c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
-	//c.poll <- id
 }
 
 func (c *ringConn) run() {
@@ -90,19 +87,13 @@ func (c *ringConn) run() {
 			commit()
 			c.getCqe(context.Background(), id)
 			return
-		case id := <-c.poll:
-			_, err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
-			atomic.StoreInt32(c.pollReady, 1)
-			if err != nil {
-				continue
-			}
-			c.r.cq.EntryBy(id)
 		}
 	}
 }
 
 // Read implements the net.Conn interface.
-func (c *ringConn) Read(b []byte) (n int, err error) {
+func (c *ringConn) Read(b []byte) (int, error) {
+	c.rePoll()
 	sqe, commit := c.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -118,23 +109,15 @@ func (c *ringConn) Read(b []byte) (n int, err error) {
 	reqID := c.r.ID()
 	sqe.UserData = reqID
 	commit()
+	ctx := context.Background()
 
-	c.deadMu.RLock()
-	dead := c.deadline
-	readDead := c.readDeadline
-	c.deadMu.RUnlock()
-	if dead.After(readDead) {
-		dead = readDead
-	}
-
-	ctx, cancel := context.WithDeadline(context.Background(), dead)
-	defer cancel()
-
-	return c.getCqe(ctx, reqID)
+	n, err := c.getCqe(ctx, reqID)
+	return n, err
 }
 
 // Write implements the net.Conn interface.
 func (c *ringConn) Write(b []byte) (n int, err error) {
+	c.rePoll()
 	sqe, commit := c.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -151,17 +134,7 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 	sqe.UserData = reqID
 	commit()
 
-	c.deadMu.RLock()
-	dead := c.deadline
-	writeDead := c.writeDeadline
-	c.deadMu.RUnlock()
-	if dead.After(writeDead) {
-		dead = writeDead
-	}
-
-	ctx, cancel := context.WithDeadline(context.Background(), dead)
-	defer cancel()
-	return c.getCqe(ctx, reqID)
+	return c.getCqe(context.Background(), reqID)
 }
 
 // Close implements the net.Conn interface.

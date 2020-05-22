@@ -258,7 +258,7 @@ func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Li
 		r:       r,
 		a:       &addr{net: network},
 		stop:    make(chan struct{}),
-		newConn: make(chan net.Conn),
+		newConn: make(chan net.Conn, 1024),
 		connGet: make(chan chan net.Conn),
 	}
 

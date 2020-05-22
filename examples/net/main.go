@@ -19,8 +19,8 @@ func init() {
 func main() {
 	flag.Parse()
 	r, err := iouring.New(
-		8192, &iouring.Params{},
-		iouring.WithDebug(),
+		8192,
+		&iouring.Params{},
 		iouring.WithID(100000),
 	)
 	if err != nil {
