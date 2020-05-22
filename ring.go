@@ -105,7 +105,8 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	return completed, nil
 }
 
-func (r *Ring) canEnter() bool {
+// CanEnter returns whether or not the ring can be entered.
+func (r *Ring) CanEnter() bool {
 	return atomic.LoadUint32(r.sq.Head) != atomic.LoadUint32(r.sq.Tail)
 }
 

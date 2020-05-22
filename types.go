@@ -289,7 +289,7 @@ type ringFIO struct {
 
 // getCqe is used for getting a CQE result and will retry up to one time.
 func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
-	if i.r.canEnter() {
+	if i.r.CanEnter() {
 		_, err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 		if err != nil {
 			return 0, err
