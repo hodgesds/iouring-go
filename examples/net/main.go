@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 
 	"github.com/hodgesds/iouring-go"
@@ -49,14 +48,7 @@ func main() {
 		fmt.Fprintf(w, "hello io_uring!\n")
 	})
 
-	s := http.Server{
-		Handler: mux,
-		//ReadTimeout:  1 * time.Second,
-		//WriteTimeout: 1 * time.Second,
-		ConnState: func(c net.Conn, s http.ConnState) {
-			fmt.Printf("conn: %+v, %+v\n", c, s)
-		},
-	}
+	s := http.Server{Handler: mux}
 	if err := s.Serve(l); err != nil {
 		log.Fatal(err)
 	}
