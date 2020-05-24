@@ -35,9 +35,10 @@ for another approach.
 
 
 # Setup
-Ulimit values for locked memory address space may need to be adjusted if you
-see the following error when running tests then you may need to update
-[`/etc/security/limits.conf`](https://linux.die.net/man/5/limits.conf).
+Ulimit values for locked memory address space may need to be adjusted. If the
+following error occurs when running tests then the `memlock` value in
+[`/etc/security/limits.conf`](https://linux.die.net/man/5/limits.conf) may need
+to be increased.
 
 ```
 === RUN   TestNew
@@ -48,8 +49,8 @@ see the following error when running tests then you may need to update
                 Test:           TestNew
 ```
 
-The ulimit value must be greater than the ring size, use `ulimit -l` to
-view the current limit.
+The ulimit value must be greater than the ring size, use `ulimit -l` to view
+the current limit.
 
 
 # Example
