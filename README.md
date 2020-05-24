@@ -1,4 +1,4 @@
-# `io_uring` Go 
+# `io_uring` Go
 [![GoDoc](https://godoc.org/github.com/hodgesds/iouring-go?status.svg)](https://godoc.org/github.com/hodgesds/iouring-go)
 
 **WORK IN PROGRESS** This library adds support for [`io_uring`](https://kernel.dk/io_uring.pdf) for
@@ -32,6 +32,24 @@ current approach sets a bit on the `Flags` of each CQE and while searching
 for the desired CSE keeps track of the index where all prior values have
 been **seen**. This is currently racey and at some point will be removed
 for another approach.
+
+
+# Setup
+Ulimit values for locked memory address space may need to be adjusted if you
+see the following error when running tests then you may need to update
+[`/etc/security/limits.conf`](https://linux.die.net/man/5/limits.conf).
+
+```
+=== RUN   TestNew
+    TestNew: ring_test.go:13:
+                Error Trace:    ring_test.go:13
+                Error:          Received unexpected error:
+                                cannot allocate memory
+                Test:           TestNew
+```
+
+The ulimit value must be greater than the ring size, use `ulimit -l` to
+view the current limit.
 
 
 # Example
