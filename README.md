@@ -95,7 +95,16 @@ func main() {
 }
 ```
 
-## Other References
+
+# Interacting with the SQ
+The submission queue can be interacted with by using the
+[`SubmitEntry`](https://godoc.org/github.com/hodgesds/iouring-go#Ring.SubmitEntry)
+method on a `Ring`. The returned function **must** be called after all updates
+to the `SubmitEntry` are complete and **before** the ring is entered. The
+callback is used for synchronization across goroutines.
+
+
+# Other References
 https://cor3ntin.github.io/posts/iouring/
 
 https://github.com/google/vectorio
