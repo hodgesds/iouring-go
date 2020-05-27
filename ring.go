@@ -99,10 +99,7 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	// io_uring_enter.
 	completed, err := Enter(r.fd, toSubmit, minComplete, flags, sigset)
 	r.sq.enterUnlock()
-	if err != nil {
-		return 0, err
-	}
-	return completed, nil
+	return completed, err
 }
 
 // CanEnter returns whether or not the ring can be entered.

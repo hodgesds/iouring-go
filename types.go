@@ -160,8 +160,9 @@ func (s *SubmitQueue) enterLock() {
 			runtime.Gosched()
 			continue
 		}
-		atomic.StoreUint32(s.entered, 1)
-		break
+		if atomic.CompareAndSwapUint32(s.entered, 0, 1) {
+			break
+		}
 	}
 }
 
