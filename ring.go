@@ -107,7 +107,20 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 
 // CanEnter returns whether or not the ring can be entered.
 func (r *Ring) CanEnter() bool {
-	return atomic.LoadUint32(r.sq.Head) != atomic.LoadUint32(r.sq.Tail)
+	// TODO: figure out this
+	mask := atomic.LoadUint32(r.sq.Mask)
+	head := atomic.LoadUint32(r.sq.Head) & mask
+	tail := atomic.LoadUint32(r.sq.Tail) & mask
+	if head <= tail {
+		return true
+	}
+	if head == tail && tail == 0 {
+		return true
+	}
+	if int(head) == len(r.sq.Entries)-1 && tail >= 0 {
+		return true
+	}
+	return false
 }
 
 // Close is used to close the ring.

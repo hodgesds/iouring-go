@@ -58,7 +58,6 @@ func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
 		break
 	}
 
-	//c.rePoll()
 	return int(cqe.Res), nil
 }
 
@@ -126,7 +125,6 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 	sqe.Opcode = WriteFixed
 	sqe.Fd = int32(c.fd)
 	sqe.Len = uint32(len(b))
-	//sqe.Flags = 0
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
 	// Use reqId as user data so we can return the request from the
 	// completion queue.

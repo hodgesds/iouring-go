@@ -235,10 +235,13 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 			seenEnd = true
 		}
 		if seen == true && !seenEnd {
-			seenIdx = i
+			seenIdx = i + 1
 		}
-		if c.Entries[i].UserData == userData {
+		if cqe.UserData == userData {
 			c.Entries[i].Flags |= CqSeenFlag
+			if seenIdx == c.Size {
+				seenIdx = 0
+			}
 			atomic.StoreUint32(c.Head, seenIdx)
 			return &c.Entries[i], nil
 		}
@@ -247,6 +250,8 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	seenIdx = uint32(0)
 	seen = false
 	seenEnd = false
+	tail = atomic.LoadUint32(c.Tail)
+	mask = atomic.LoadUint32(c.Mask)
 	for i := uint32(0); i <= tail&mask; i++ {
 		cqe := c.Entries[i]
 		if cqe.Flags&CqSeenFlag == CqSeenFlag || cqe.IsZero() {
@@ -256,10 +261,13 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 			seenEnd = true
 		}
 		if seen == true && !seenEnd {
-			seenIdx = i
+			seenIdx = i + 1
 		}
-		if c.Entries[i].UserData == userData {
+		if cqe.UserData == userData {
 			c.Entries[i].Flags |= CqSeenFlag
+			if seenIdx == c.Size {
+				seenIdx = 0
+			}
 			atomic.StoreUint32(c.Head, seenIdx)
 			return &c.Entries[i], nil
 		}
@@ -289,6 +297,7 @@ type ringFIO struct {
 
 // getCqe is used for getting a CQE result and will retry up to one time.
 func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
+enter:
 	if i.r.CanEnter() {
 		_, err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
 		if err != nil {
@@ -297,6 +306,9 @@ func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
 		if i.r.debug {
 			fmt.Printf("enter complete\n")
 		}
+	} else {
+		runtime.Gosched()
+		goto enter
 	}
 	if i.r.debug {
 		sqHead := *i.r.sq.Head
@@ -313,6 +325,9 @@ func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
 	// Use EntryBy to return the CQE by the "request" id in UserData.
 	cqe, err := i.r.cq.EntryBy(reqID)
 	if err != nil {
+		if err == io.EOF {
+			return int(cqe.Res), err
+		}
 		if err == ErrEntryNotFound && retryNotFound {
 			return i.getCqe(reqID, false)
 		}
