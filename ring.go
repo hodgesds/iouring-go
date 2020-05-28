@@ -236,6 +236,7 @@ getNext:
 		if r.debug {
 			fmt.Printf("sq array:%+v\n", r.sq.Array[:9])
 		}
+		r.sq.Entries[tail&mask].Reset()
 		return &r.sq.Entries[tail&mask], func() {
 			r.sq.completeWrite()
 			r.sq.Array[next-1] = head & mask

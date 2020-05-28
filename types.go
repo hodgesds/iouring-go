@@ -335,7 +335,7 @@ enter:
 		return 0, err
 	}
 	if cqe.Res < 0 {
-		return int(cqe.Res), syscall.Errno(cqe.Res)
+		return 0, syscall.Errno(-cqe.Res)
 	}
 	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 
