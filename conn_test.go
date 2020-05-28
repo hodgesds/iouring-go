@@ -1,6 +1,8 @@
 package iouring
 
 import (
+	"bytes"
+	"io/ioutil"
 	"net"
 	"testing"
 
@@ -8,7 +10,6 @@ import (
 )
 
 func TestSockoptListener(t *testing.T) {
-	t.Skip()
 	r, err := New(8192, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
@@ -27,4 +28,14 @@ func TestSockoptListener(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.NoError(t, conn.Close())
+}
+
+func TestFastOpenAllowed(t *testing.T) {
+	b, err := ioutil.ReadFile("/proc/sys/net/ipv4/tcp_fack")
+	require.NoError(t, err)
+	if bytes.Contains(b, []byte("3")) {
+		require.NoError(t, FastOpenAllowed())
+	} else {
+		require.Error(t, FastOpenAllowed())
+	}
 }

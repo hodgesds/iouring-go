@@ -164,4 +164,6 @@ type ReadWriteSeekerCloser interface {
 	io.Writer
 	io.Seeker
 	io.Closer
+	ReadAt([]byte, int64) (int, error)
+	WriteAt([]byte, int64) (int, error)
 }
