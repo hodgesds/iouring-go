@@ -57,8 +57,12 @@ func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
 		}
 		break
 	}
+	res := int(cqe.Res)
+	if res < 0 {
+		return 0, syscall.Errno(-res)
+	}
 
-	return int(cqe.Res), nil
+	return res, nil
 }
 
 func (c *ringConn) rePoll() {

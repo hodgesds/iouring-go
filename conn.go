@@ -63,13 +63,14 @@ func (a *addr) String() string {
 }
 
 type ringListener struct {
-	debug   bool
-	r       *Ring
-	f       *os.File
-	a       *addr
-	stop    chan struct{}
-	newConn chan net.Conn
-	connGet chan chan net.Conn
+	debug      bool
+	r          *Ring
+	f          *os.File
+	a          *addr
+	stop       chan struct{}
+	errHandler func(error)
+	newConn    chan net.Conn
+	connGet    chan chan net.Conn
 }
 
 // run is used to interact with the ring
@@ -96,9 +97,10 @@ func (l *ringListener) run() {
 		default:
 			_, err := l.r.Enter(1024, 1, EnterGetEvents, nil)
 			if err != nil {
-				// TODO: These errors should probably just be
-				// logged.
-				panic(err.Error())
+				if l.errHandler != nil {
+					l.errHandler(err)
+				}
+				continue
 			}
 			l.walkCq(conns)
 		}
@@ -248,18 +250,19 @@ func (l *ringListener) Accept() (net.Conn, error) {
 }
 
 // SockoptListener returns a net.Listener that is Ring based.
-func (r *Ring) SockoptListener(network, address string, sockopts ...int) (net.Listener, error) {
+func (r *Ring) SockoptListener(network, address string, errHandler func(error), sockopts ...int) (net.Listener, error) {
 	var (
 		err      error
 		fd       int
 		sockAddr syscall.Sockaddr
 	)
 	l := &ringListener{
-		r:       r,
-		a:       &addr{net: network},
-		stop:    make(chan struct{}),
-		newConn: make(chan net.Conn, 1024),
-		connGet: make(chan chan net.Conn),
+		r:          r,
+		a:          &addr{net: network},
+		stop:       make(chan struct{}),
+		newConn:    make(chan net.Conn, 1024),
+		connGet:    make(chan chan net.Conn),
+		errHandler: errHandler,
 	}
 
 	switch network {

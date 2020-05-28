@@ -30,6 +30,9 @@ func main() {
 	l, err := r.SockoptListener(
 		"tcp",
 		fmt.Sprintf(":%d", port),
+		func(err error) {
+			log.Println(err)
+		},
 		iouring.SOReuseport,
 	)
 	if err != nil {
