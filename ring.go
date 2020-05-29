@@ -14,6 +14,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type completionRequest struct {
+	id    uint64
+	res   int32
+	flags uint32
+	done  chan struct{}
+}
+
 // Ring contains an io_uring submit and completion ring.
 type Ring struct {
 	fd      int
@@ -27,7 +34,10 @@ type Ring struct {
 	debug   bool
 	fileReg FileRegistry
 
-	eventFd int
+	stop           chan struct{}
+	completions    chan *completionRequest
+	eventFd        int
+	completionPool sync.Pool
 }
 
 // New is used to create an iouring.Ring.
@@ -53,19 +63,29 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 
 	sq.writes = &sqWrites
 	r := &Ring{
-		p:       p,
-		fd:      fd,
-		cq:      &cq,
-		sq:      &sq,
-		idx:     &idx,
-		fileReg: NewFileRegistry(fd),
-		eventFd: -1,
+		p:           p,
+		fd:          fd,
+		cq:          &cq,
+		sq:          &sq,
+		idx:         &idx,
+		fileReg:     NewFileRegistry(fd),
+		eventFd:     -1,
+		stop:        make(chan struct{}, 32),
+		completions: make(chan *completionRequest, len(cq.Entries)),
+		completionPool: sync.Pool{
+			New: func() interface{} {
+				return &completionRequest{
+					done: make(chan struct{}, 8),
+				}
+			},
+		},
 	}
 	for _, opt := range opts {
 		if err := opt(r); err != nil {
 			return nil, err
 		}
 	}
+	go r.run()
 
 	return r, nil
 }
@@ -102,22 +122,108 @@ func (r *Ring) Enter(toSubmit uint, minComplete uint, flags uint, sigset *unix.S
 	return completed, err
 }
 
+// run is used to run the ring and handle completions.
+func (r *Ring) run() {
+	inflight := map[uint64]*completionRequest{}
+	retry := make(chan struct{}, 2)
+	for {
+		select {
+		case <-r.stop:
+			return
+		case cr := <-r.completions:
+			inflight[cr.id] = cr
+			_, err := r.Enter(uint(len(inflight)), 1, EnterGetEvents, nil)
+			if err != nil {
+				println(err.Error())
+				continue
+			}
+			r.onEntry(inflight, retry)
+			if len(inflight) > 0 {
+				retry <- struct{}{}
+			}
+		case <-retry:
+			_, err := r.Enter(uint(len(inflight)), 1, EnterGetEvents, nil)
+			if err != nil {
+				println(err.Error())
+				continue
+			}
+			r.onEntry(inflight, retry)
+			if len(inflight) > 0 {
+				retry <- struct{}{}
+			}
+		}
+	}
+}
+
+func (r *Ring) complete(reqID uint64) (int32, uint32) {
+	req := r.completionPool.Get().(*completionRequest)
+	req.id = reqID
+	req.res = 0
+	req.flags = 0
+	r.completions <- req
+	<-req.done
+	defer r.completionPool.Put(req)
+	return req.res, req.flags
+}
+
+func (r *Ring) onEntry(inflight map[uint64]*completionRequest, retry chan struct{}) {
+	mask := atomic.LoadUint32(r.cq.Mask)
+	head := atomic.LoadUint32(r.cq.Head)
+	tail := atomic.LoadUint32(r.cq.Tail)
+	nEntries := uint32(len(r.cq.Entries))
+	seenIdx := uint32(0)
+	seen := true
+	for i := head & mask; i < nEntries; i++ {
+		cqe := r.cq.Entries[i]
+		if cr, ok := inflight[cqe.UserData]; ok {
+			if seen {
+				seenIdx++
+			}
+			cr.res = cqe.Res
+			cr.flags = cqe.Flags
+			cr.done <- struct{}{}
+			delete(inflight, cr.id)
+		} else {
+			seen = false
+		}
+		if i == tail&mask {
+			//fmt.Printf("head: %v\ntail: %v\n", head, tail)
+			//fmt.Printf("xseenIdx: %v\n", seenIdx)
+			atomic.StoreUint32(r.cq.Head, head+seenIdx)
+			return
+		}
+	}
+	println("wrap")
+	println(nEntries)
+	fmt.Printf("head: %v\ntail: %v\n", head&mask, tail&mask)
+	seen = true
+	for i := uint32(0); i < tail&mask; i++ {
+		cqe := r.cq.Entries[i]
+		if cr, ok := inflight[cqe.UserData]; ok {
+			if seen {
+				seenIdx++
+				println(seenIdx)
+			}
+			cr.res = cqe.Res
+			cr.flags = cqe.Flags
+			cr.done <- struct{}{}
+			delete(inflight, cr.id)
+		} else {
+			seen = false
+		}
+	}
+	println("done")
+	fmt.Printf("head: %v\ntail: %v\n", head&mask, tail&mask)
+	fmt.Printf("seenIdx: %v\n", seenIdx)
+	fmt.Printf("sq entries: %+v\n", r.sq.Entries[:])
+	fmt.Printf("cq entries: %+v\n", r.cq.Entries[:])
+	atomic.StoreUint32(r.cq.Head, head+seenIdx)
+}
+
 // CanEnter returns whether or not the ring can be entered.
 func (r *Ring) CanEnter() bool {
 	// TODO: figure out this
-	mask := atomic.LoadUint32(r.sq.Mask)
-	head := atomic.LoadUint32(r.sq.Head) & mask
-	tail := atomic.LoadUint32(r.sq.Tail) & mask
-	if head <= tail {
-		return true
-	}
-	if head == tail && tail == 0 {
-		return true
-	}
-	if int(head) == len(r.sq.Entries)-1 && tail >= 0 {
-		return true
-	}
-	return false
+	return true
 }
 
 // Close is used to close the ring.

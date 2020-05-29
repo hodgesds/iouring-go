@@ -368,7 +368,11 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID, true)
+	n, _ := i.r.complete(reqID)
+	if n < 0 {
+		return 0, syscall.Errno(-n)
+	}
+	return int(n), nil
 }
 
 // Read implements the io.Reader interface.
@@ -409,7 +413,12 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
 	}
 
-	return i.getCqe(reqID, true)
+	n, _ := i.r.complete(reqID)
+	if n < 0 {
+		return 0, syscall.Errno(-n)
+	}
+	return int(n), nil
+	//return i.getCqe(reqID, true)
 }
 
 // WriteAt implements the io.WriterAt interface.
