@@ -173,16 +173,11 @@ func TestRingFileReadWriterWriteRead(t *testing.T) {
 	_, err = rw.Seek(0, 0)
 	require.NoError(t, err)
 
-	buf := make([]byte, len(content)/2)
+	buf := make([]byte, len(content))
 	n, err := rw.Read(buf)
 	require.NoError(t, err)
 	require.True(t, n > 0)
-
-	buf2 := make([]byte, len(content)/2+1)
-	n, err = rw.Read(buf2)
-	require.NoError(t, err)
-	require.True(t, n > 0)
-	require.Equal(t, content, append(buf, buf2...))
+	require.Equal(t, content, buf)
 
 	require.NoError(t, rw.Close())
 }
@@ -199,7 +194,7 @@ func TestRingReadWrap(t *testing.T) {
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	for i := 0; i < int(ringSize)*4; i++ {
+	for i := 0; i < int(ringSize)*10; i++ {
 		buf := make([]byte, 8)
 		n, err := rw.Read(buf)
 		require.NoError(t, err)
@@ -224,14 +219,14 @@ func TestConcurrentReaders(t *testing.T) {
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 4; i++ {
 		go func() {
 			for {
 				select {
 				case <-stop:
 					return
 				case <-work:
-					buf := make([]byte, 16)
+					buf := make([]byte, 1)
 					_, err := rw.Read(buf)
 					wg.Done()
 					if err != nil && err != ErrEntryNotFound {
@@ -242,7 +237,7 @@ func TestConcurrentReaders(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < int(ringSize*2); i++ {
+	for i := 0; i < int(ringSize+2); i++ {
 		wg.Add(1)
 		work <- struct{}{}
 	}

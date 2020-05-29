@@ -19,7 +19,9 @@ func main() {
 	flag.Parse()
 	r, err := iouring.New(
 		8192,
-		&iouring.Params{},
+		&iouring.Params{
+			Features: iouring.FeatNoDrop | iouring.FeatSubmitStable,
+		},
 		iouring.WithID(100000),
 	)
 	if err != nil {

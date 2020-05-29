@@ -446,7 +446,12 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID, true)
+	//return i.getCqe(reqID, true)
+	n, _ := i.r.complete(reqID)
+	if n < 0 {
+		return 0, syscall.Errno(-n)
+	}
+	return int(n), nil
 }
 
 // ReadAt implements the io.ReaderAt interface.
@@ -474,7 +479,12 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID, true)
+	//return i.getCqe(reqID, true)
+	n, _ := i.r.complete(reqID)
+	if n < 0 {
+		return 0, syscall.Errno(-n)
+	}
+	return int(n), nil
 }
 
 // Close implements the io.Closer interface.

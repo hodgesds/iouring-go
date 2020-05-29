@@ -17,9 +17,9 @@ func init() {
 
 func main() {
 	flag.Parse()
-	//ring, err := iouring.New(32, nil, iouring.WithDebug())
-	//ring, err := iouring.New(2048, nil, iouring.WithDebug())
-	ring, err := iouring.New(2048, nil)
+	ring, err := iouring.New(4096, &iouring.Params{
+		Features: iouring.FeatNoDrop | iouring.FeatSubmitStable,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

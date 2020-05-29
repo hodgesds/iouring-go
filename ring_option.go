@@ -50,3 +50,11 @@ func WithID(id uint64) RingOption {
 		return nil
 	}
 }
+
+// WithEnterErrHandler is used to handle errors on ring enter.
+func WithEnterErrHandler(f func(error)) RingOption {
+	return func(r *Ring) error {
+		r.enterErrHandler = f
+		return nil
+	}
+}

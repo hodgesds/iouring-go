@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
@@ -23,16 +24,17 @@ type completionRequest struct {
 
 // Ring contains an io_uring submit and completion ring.
 type Ring struct {
-	fd      int
-	p       *Params
-	cq      *CompletionQueue
-	cqMu    sync.RWMutex
-	sq      *SubmitQueue
-	sqMu    sync.RWMutex
-	sqPool  sync.Pool
-	idx     *uint64
-	debug   bool
-	fileReg FileRegistry
+	fd              int
+	p               *Params
+	cq              *CompletionQueue
+	cqMu            sync.RWMutex
+	sq              *SubmitQueue
+	sqMu            sync.RWMutex
+	sqPool          sync.Pool
+	idx             *uint64
+	debug           bool
+	fileReg         FileRegistry
+	enterErrHandler func(error)
 
 	stop           chan struct{}
 	completions    chan *completionRequest
@@ -132,23 +134,34 @@ func (r *Ring) run() {
 			return
 		case cr := <-r.completions:
 			inflight[cr.id] = cr
-			_, err := r.Enter(uint(len(inflight)), 1, EnterGetEvents, nil)
+			// TODO: Use the number completed for tracking
+			_, err := r.Enter(uint(len(inflight)), 0, EnterGetEvents, nil)
 			if err != nil {
-				println(err.Error())
-				continue
+				if r.enterErrHandler != nil {
+					r.enterErrHandler(err)
+				}
+				// There still may be completed requests so continue on.
 			}
 			r.onEntry(inflight, retry)
 			if len(inflight) > 0 {
+				time.Sleep(1 * time.Millisecond)
 				retry <- struct{}{}
 			}
 		case <-retry:
-			_, err := r.Enter(uint(len(inflight)), 1, EnterGetEvents, nil)
-			if err != nil {
-				println(err.Error())
-				continue
+			select {
+			case cr := <-r.completions:
+				inflight[cr.id] = cr
+				_, err := r.Enter(uint(len(inflight)), 0, EnterGetEvents, nil)
+				if err != nil {
+					if r.enterErrHandler != nil {
+						r.enterErrHandler(err)
+					}
+				}
+			default:
 			}
 			r.onEntry(inflight, retry)
 			if len(inflight) > 0 {
+				time.Sleep(1 * time.Millisecond)
 				retry <- struct{}{}
 			}
 		}
@@ -162,8 +175,10 @@ func (r *Ring) complete(reqID uint64) (int32, uint32) {
 	req.flags = 0
 	r.completions <- req
 	<-req.done
-	defer r.completionPool.Put(req)
-	return req.res, req.flags
+	res := req.res
+	flags := req.flags
+	r.completionPool.Put(req)
+	return res, flags
 }
 
 func (r *Ring) onEntry(inflight map[uint64]*completionRequest, retry chan struct{}) {
@@ -187,22 +202,16 @@ func (r *Ring) onEntry(inflight map[uint64]*completionRequest, retry chan struct
 			seen = false
 		}
 		if i == tail&mask {
-			//fmt.Printf("head: %v\ntail: %v\n", head, tail)
-			//fmt.Printf("xseenIdx: %v\n", seenIdx)
 			atomic.StoreUint32(r.cq.Head, head+seenIdx)
 			return
 		}
 	}
-	println("wrap")
-	println(nEntries)
-	fmt.Printf("head: %v\ntail: %v\n", head&mask, tail&mask)
 	seen = true
 	for i := uint32(0); i < tail&mask; i++ {
 		cqe := r.cq.Entries[i]
 		if cr, ok := inflight[cqe.UserData]; ok {
 			if seen {
 				seenIdx++
-				println(seenIdx)
 			}
 			cr.res = cqe.Res
 			cr.flags = cqe.Flags
@@ -212,11 +221,6 @@ func (r *Ring) onEntry(inflight map[uint64]*completionRequest, retry chan struct
 			seen = false
 		}
 	}
-	println("done")
-	fmt.Printf("head: %v\ntail: %v\n", head&mask, tail&mask)
-	fmt.Printf("seenIdx: %v\n", seenIdx)
-	fmt.Printf("sq entries: %+v\n", r.sq.Entries[:])
-	fmt.Printf("cq entries: %+v\n", r.cq.Entries[:])
 	atomic.StoreUint32(r.cq.Head, head+seenIdx)
 }
 

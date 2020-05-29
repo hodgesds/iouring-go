@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -41,8 +42,8 @@ func BenchmarkWrite(b *testing.B) {
 	}
 
 	for _, test := range tests {
-		benchmarkRingWrite(b, test.ringSize, test.writeSize)
 		benchmarkFileWrite(b, test.writeSize)
+		benchmarkRingWrite(b, test.ringSize, test.writeSize)
 	}
 }
 
@@ -50,11 +51,18 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 	b.Run(
 		fmt.Sprintf("ring-%d-write-%d", ringSize, writeSize),
 		func(b *testing.B) {
-			r, err := New(ringSize, nil)
+			r, err := New(ringSize, &Params{
+				Features: FeatNoDrop | FeatSubmitStable,
+			},
+			)
 			require.NoError(b, err)
 			require.NotNil(b, r)
-			data := make([]byte, writeSize)
-			rand.Read(data)
+
+			bufPool := sync.Pool{
+				New: func() interface{} {
+					return make([]byte, writeSize)
+				},
+			}
 
 			f, err := ioutil.TempFile("", "example")
 			require.NoError(b, err)
@@ -63,11 +71,13 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 			rw, err := r.FileReadWriter(f)
 			require.NoError(b, err)
 
-			b.SetBytes(int64(len(data)))
+			b.SetBytes(int64(writeSize))
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
+				data := bufPool.Get().([]byte)
 				rw.Write(data)
+				bufPool.Put(data)
 			}
 		},
 	)
