@@ -135,14 +135,14 @@ func (r *Ring) run() {
 		case cr := <-r.completions:
 			inflight[cr.id] = cr
 			// TODO: Use the number completed for tracking
-			_, err := r.Enter(uint(len(inflight)), 0, EnterGetEvents, nil)
+			count, err := r.Enter(uint(len(inflight)), 0, EnterGetEvents, nil)
 			if err != nil {
 				if r.enterErrHandler != nil {
 					r.enterErrHandler(err)
 				}
 				// There still may be completed requests so continue on.
 			}
-			r.onEntry(inflight, retry)
+			r.onEntry(inflight, count)
 			if len(inflight) > 0 {
 				time.Sleep(1 * time.Millisecond)
 				retry <- struct{}{}
@@ -159,7 +159,7 @@ func (r *Ring) run() {
 				}
 			default:
 			}
-			r.onEntry(inflight, retry)
+			r.onEntry(inflight, 0)
 			if len(inflight) > 0 {
 				time.Sleep(1 * time.Millisecond)
 				retry <- struct{}{}
@@ -181,7 +181,7 @@ func (r *Ring) complete(reqID uint64) (int32, uint32) {
 	return res, flags
 }
 
-func (r *Ring) onEntry(inflight map[uint64]*completionRequest, retry chan struct{}) {
+func (r *Ring) onEntry(inflight map[uint64]*completionRequest, count int) {
 	mask := atomic.LoadUint32(r.cq.Mask)
 	head := atomic.LoadUint32(r.cq.Head)
 	tail := atomic.LoadUint32(r.cq.Tail)

@@ -372,6 +372,10 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	if n < 0 {
 		return 0, syscall.Errno(-n)
 	}
+	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(n))
+	if n == 0 {
+		return 0, io.EOF
+	}
 	return int(n), nil
 }
 
@@ -417,8 +421,12 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	if n < 0 {
 		return 0, syscall.Errno(-n)
 	}
+
+	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(n))
+	if n == 0 {
+		return 0, io.EOF
+	}
 	return int(n), nil
-	//return i.getCqe(reqID, true)
 }
 
 // WriteAt implements the io.WriterAt interface.
@@ -446,10 +454,12 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	//return i.getCqe(reqID, true)
 	n, _ := i.r.complete(reqID)
 	if n < 0 {
 		return 0, syscall.Errno(-n)
+	}
+	if n == 0 {
+		return 0, io.EOF
 	}
 	return int(n), nil
 }
@@ -479,10 +489,12 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	//return i.getCqe(reqID, true)
 	n, _ := i.r.complete(reqID)
 	if n < 0 {
 		return 0, syscall.Errno(-n)
+	}
+	if n == 0 {
+		return 0, io.EOF
 	}
 	return int(n), nil
 }

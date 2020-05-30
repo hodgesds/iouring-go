@@ -194,7 +194,7 @@ func TestRingReadWrap(t *testing.T) {
 	rw, err := r.FileReadWriter(f)
 	require.NoError(t, err)
 
-	for i := 0; i < int(ringSize)*10; i++ {
+	for i := 0; i < int(ringSize)*100; i++ {
 		buf := make([]byte, 8)
 		n, err := rw.Read(buf)
 		require.NoError(t, err)
@@ -251,4 +251,26 @@ func TestCqeIsZero(t *testing.T) {
 	require.True(t, cqe.IsZero())
 	cqe.Res = 1
 	require.False(t, cqe.IsZero())
+}
+
+func TestReadWriterEOF(t *testing.T) {
+	r, err := New(1024, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	content := []byte("testing...1,2,3")
+	f, err := ioutil.TempFile("", "example")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	rw, err := r.FileReadWriter(f)
+	require.NoError(t, err)
+
+	// Write to the file using the ring
+	_, err = rw.Write(content)
+	require.NoError(t, err)
+
+	buf := make([]byte, 4096)
+	_, err = rw.Read(buf)
+	require.Error(t, err)
 }
