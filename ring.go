@@ -144,7 +144,6 @@ func (r *Ring) run() {
 			}
 			r.onEntry(inflight, count)
 			if len(inflight) > 0 {
-				time.Sleep(1 * time.Millisecond)
 				retry <- struct{}{}
 			}
 		case <-retry:
@@ -161,7 +160,8 @@ func (r *Ring) run() {
 			}
 			r.onEntry(inflight, 0)
 			if len(inflight) > 0 {
-				time.Sleep(1 * time.Millisecond)
+				// TODO: Use eventfd for polling instead.
+				time.Sleep(200 * time.Nanosecond)
 				retry <- struct{}{}
 			}
 		}

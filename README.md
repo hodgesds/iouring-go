@@ -67,7 +67,9 @@ import (
 )
 
 func main() {
-	r, err := iouring.New(1024, nil)
+	r, err := iouring.New(1024, &iouring.Params{
+		Features: iouring.FeatNoDrop,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

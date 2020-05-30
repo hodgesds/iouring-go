@@ -20,7 +20,7 @@ func main() {
 	r, err := iouring.New(
 		8192,
 		&iouring.Params{
-			Features: iouring.FeatNoDrop | iouring.FeatSubmitStable,
+			Features: iouring.FeatNoDrop,
 		},
 		iouring.WithID(100000),
 	)

@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -52,7 +51,7 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 		fmt.Sprintf("ring-%d-write-%d", ringSize, writeSize),
 		func(b *testing.B) {
 			r, err := New(ringSize, &Params{
-				Features: FeatNoDrop | FeatSubmitStable,
+				Features: FeatNoDrop,
 			},
 			)
 			require.NoError(b, err)
@@ -76,7 +75,10 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				data := bufPool.Get().([]byte)
-				rw.Write(data)
+				_, err = rw.Write(data)
+				if err != nil {
+					b.Fatal(err)
+				}
 				bufPool.Put(data)
 			}
 		},
@@ -94,7 +96,7 @@ func benchmarkFileWrite(b *testing.B, writeSize int) {
 
 			f, err := os.OpenFile(
 				fmt.Sprintf("os-file-write-%d.test", writeSize),
-				syscall.O_DIRECT|os.O_RDWR|os.O_CREATE, 0644)
+				os.O_RDWR|os.O_CREATE, 0644)
 			require.NoError(b, err)
 			defer os.Remove(f.Name())
 
