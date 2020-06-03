@@ -6,7 +6,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -27,7 +26,7 @@ func Enter(fd int, toSubmit uint, minComplete uint, flags uint, sigset *unix.Sig
 		return 0, err
 	}
 	if res < 0 {
-		return 0, errors.New("no entries completed")
+		return 0, syscall.Errno(-res)
 	}
 
 	return int(res), nil

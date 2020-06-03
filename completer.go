@@ -41,7 +41,6 @@ func (c *completer) run() {
 			}
 			head := atomic.LoadUint32(c.cq.Head)
 			mask := atomic.LoadUint32(c.cq.Mask)
-			//fmt.Printf("head: %v\n", head&mask)
 			seen := int(0)
 			// Continue to move the head until the next value
 			// hasn't arrived yet.
