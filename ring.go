@@ -385,7 +385,9 @@ func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
 		r:       r,
 		f:       f,
 		fOffset: &offset,
+		c:       newCompleter(r.cq, 512),
 	}
+	go rw.c.run()
 	if r.fileReg == nil {
 		return rw, nil
 	}

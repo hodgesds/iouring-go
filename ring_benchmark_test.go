@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,11 +30,11 @@ func BenchmarkWrite(b *testing.B) {
 			writeSize: 1024,
 		},
 		{
-			ringSize:  1024,
+			ringSize:  8192,
 			writeSize: 2048,
 		},
 		{
-			ringSize:  1024,
+			ringSize:  8192,
 			writeSize: 4096,
 		},
 	}
@@ -57,11 +56,11 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 			require.NoError(b, err)
 			require.NotNil(b, r)
 
-			bufPool := sync.Pool{
-				New: func() interface{} {
-					return make([]byte, writeSize)
-				},
-			}
+			//bufPool := sync.Pool{
+			//	New: func() interface{} {
+			//		return make([]byte, writeSize)
+			//	},
+			//}
 
 			f, err := ioutil.TempFile("", "example")
 			require.NoError(b, err)
@@ -70,16 +69,18 @@ func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
 			rw, err := r.FileReadWriter(f)
 			require.NoError(b, err)
 
+			data := make([]byte, writeSize)
+
 			b.SetBytes(int64(writeSize))
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				data := bufPool.Get().([]byte)
+				//data := bufPool.Get().([]byte)
 				_, err = rw.Write(data)
 				if err != nil {
 					b.Fatal(err)
 				}
-				bufPool.Put(data)
+				//bufPool.Put(data)
 			}
 		},
 	)

@@ -3,55 +3,28 @@
 package iouring
 
 import (
-	"fmt"
-	"io"
-	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
-	"syscall"
-	"unsafe"
 
 	"github.com/pkg/errors"
 )
 
-// RingState is the state of the ring.
-type RingState uint32
-
 const (
-	// RingStateEmpty is when a ring is empty.
-	RingStateEmpty uint32 = 1 << iota
-	// RingStateUpdating is when a ring is preparing to be entered.
-	RingStateUpdating
-	// RingStateFilled is when a ring is filled and ready to be updated or
-	// entered.
-	RingStateFilled
-	// RingStateWriting is when a ring is being written to.
-	RingStateWriting
-
 	// CqSeenFlag is a nonstandard flag for handling concurrent readers
 	// from the CompletionQueue.
 	CqSeenFlag = 1
 )
 
-// String implements the stringer method.
-func (s RingState) String() string {
-	switch uint32(s) {
-	case RingStateEmpty:
-		return "empty"
-	case RingStateUpdating:
-		return "updating"
-	case RingStateFilled:
-		return "filled"
-	case RingStateWriting:
-		return "writing"
-	default:
-		return "invalid"
-	}
-}
-
 var (
 	// ErrEntryNotFound is returned when a CQE is not found.
 	ErrEntryNotFound = errors.New("Completion entry not found")
+
+	cqePool = sync.Pool{
+		New: func() interface{} {
+			return &CompletionEntry{}
+		},
+	}
 )
 
 // Params are used to configured a io uring.
@@ -281,246 +254,4 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 type KernelTimespec struct {
 	Sec  int64
 	Nsec int64
-}
-
-// ReadWriteAtCloser supports reading, writing, and closing.
-type ReadWriteAtCloser interface {
-	io.WriterAt
-	io.ReadWriteCloser
-}
-
-// ringFIO is used for handling file IO.
-type ringFIO struct {
-	r       *Ring
-	f       *os.File
-	fOffset *int64
-}
-
-// getCqe is used for getting a CQE result and will retry up to one time.
-func (i *ringFIO) getCqe(reqID uint64, retryNotFound bool) (int, error) {
-enter:
-	if i.r.CanEnter() {
-		_, err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-		if err != nil {
-			return 0, err
-		}
-		if i.r.debug {
-			fmt.Printf("enter complete\n")
-		}
-	} else {
-		runtime.Gosched()
-		goto enter
-	}
-	if i.r.debug {
-		sqHead := *i.r.sq.Head
-		sqTail := *i.r.sq.Tail
-		sqMask := *i.r.sq.Mask
-		cqHead := *i.r.cq.Head
-		cqTail := *i.r.cq.Tail
-		cqMask := *i.r.cq.Mask
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
-		fmt.Printf("sq array: %+v\n", i.r.sq.Array)
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
-	}
-
-	// Use EntryBy to return the CQE by the "request" id in UserData.
-	cqe, err := i.r.cq.EntryBy(reqID)
-	if err != nil {
-		if err == io.EOF {
-			return int(cqe.Res), err
-		}
-		if err == ErrEntryNotFound && retryNotFound {
-			return i.getCqe(reqID, false)
-		}
-		return 0, err
-	}
-	if cqe.Res < 0 {
-		return 0, syscall.Errno(-cqe.Res)
-	}
-	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
-
-	return int(cqe.Res), nil
-}
-
-// Write implements the io.Writer interface.
-//go:nosplit
-func (i *ringFIO) Write(b []byte) (int, error) {
-	sqe, ready := i.r.SubmitEntry()
-	if sqe == nil {
-		return 0, errors.New("ring unavailable")
-	}
-
-	sqe.Opcode = WriteFixed
-	sqe.Fd = int32(i.f.Fd())
-	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
-	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
-
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-
-	n, _ := i.r.complete(reqID)
-	if n < 0 {
-		return 0, syscall.Errno(-n)
-	}
-	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(n))
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return int(n), nil
-}
-
-// Read implements the io.Reader interface.
-//go:nosplit
-func (i *ringFIO) Read(b []byte) (int, error) {
-	sqe, ready := i.r.SubmitEntry()
-	if sqe == nil {
-		return 0, errors.New("ring unavailable")
-	}
-
-	sqe.Opcode = ReadFixed
-	sqe.Fd = int32(i.f.Fd())
-	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
-	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
-
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-
-	if i.r.debug {
-		sqHead := *i.r.sq.Head
-		sqTail := *i.r.sq.Tail
-		sqMask := *i.r.sq.Mask
-		cqHead := *i.r.cq.Head
-		cqTail := *i.r.cq.Tail
-		cqMask := *i.r.cq.Mask
-		fmt.Printf("pre enter\n")
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
-	}
-
-	n, _ := i.r.complete(reqID)
-	if n < 0 {
-		return 0, syscall.Errno(-n)
-	}
-
-	atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(n))
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return int(n), nil
-}
-
-// WriteAt implements the io.WriterAt interface.
-func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
-	sqe, ready := i.r.SubmitEntry()
-	if sqe == nil {
-		return 0, errors.New("ring unavailable")
-	}
-
-	sqe.Opcode = WriteFixed
-	sqe.Fd = int32(i.f.Fd())
-	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
-	sqe.Offset = uint64(o)
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
-
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-
-	n, _ := i.r.complete(reqID)
-	if n < 0 {
-		return 0, syscall.Errno(-n)
-	}
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return int(n), nil
-}
-
-// ReadAt implements the io.ReaderAt interface.
-func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
-	sqe, ready := i.r.SubmitEntry()
-	if sqe == nil {
-		return 0, errors.New("ring unavailable")
-	}
-
-	sqe.Opcode = ReadFixed
-	sqe.Fd = int32(i.f.Fd())
-	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
-	sqe.Offset = uint64(o)
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
-
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-
-	n, _ := i.r.complete(reqID)
-	if n < 0 {
-		return 0, syscall.Errno(-n)
-	}
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return int(n), nil
-}
-
-// Close implements the io.Closer interface.
-func (i *ringFIO) Close() error {
-	return i.f.Close()
-}
-
-// Seek implements the io.Seeker interface.
-func (i *ringFIO) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-		atomic.StoreInt64(i.fOffset, offset)
-		return 0, nil
-	case io.SeekCurrent:
-		atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+offset)
-		return 0, nil
-	case io.SeekEnd:
-		stat, err := i.f.Stat()
-		if err != nil {
-			return 0, err
-		}
-		atomic.StoreInt64(i.fOffset, stat.Size()-offset)
-		return 0, nil
-	default:
-		return 0, errors.New("unknown whence")
-	}
 }
