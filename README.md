@@ -8,6 +8,13 @@ things that need cleaned up.
 
 # Interacting with the Submit/Completion Queues
 
+## Design
+The library is designed so that if you want to use your own implementation for
+handling submissions/completions that everything is available for use.
+Alternatively, there helper methods on the `Ring` struct that also interact
+with standard library interfaces as well. There is also a interface for
+creating a `net.Listener`, but it is still a work in progress.
+
 ## Submission Queue
 The submission and completion queues are both mmap'd as slices, the question
 then becomes how to design an efficient API that is also able to interact with
@@ -24,15 +31,18 @@ atomics](https://github.com/golang/go/issues/5045) which can make it difficult
 to use `sync/atomic` in all situations. If certain IO operations are to be
 carriered out in a specific order then this becomes a real challenge.
 
+The current challenge with the SQ is that currently for each reader/writer
+interface every time the a read or write is submitted the
+[`Enter`](https://godoc.org/github.com/hodgesds/iouring-go#Enter) method is
+called on the ring. These could be batched (with a small latency penalty) and
+allow for a single enter of the ring, which would result in fewer syscalls.
+
 ## Completion Queue
 Completion queues have the difficulty of many concurrent readers which
-need to synchronize updating the position of the head. Currently there
-is no solution that isn't racey or without significant overhead. The
-current approach sets a bit on the `Flags` of each CQE and while searching
-for the desired CSE keeps track of the index where all prior values have
-been **seen**. This is currently racey and at some point will be removed
-for another approach.
-
+need to synchronize updating the position of the head. The current solution
+is to have a separate background goroutine that tracks the position of the
+out of order completions and updates the head as necessary. This separates the
+logic of synchronizing updating of the CQ head and handling a SQ request
 
 # Setup
 Ulimit values for locked memory address space may need to be adjusted. If the
@@ -97,14 +107,12 @@ func main() {
 }
 ```
 
-
 # Interacting with the SQ
 The submission queue can be interacted with by using the
 [`SubmitEntry`](https://godoc.org/github.com/hodgesds/iouring-go#Ring.SubmitEntry)
 method on a `Ring`. The returned function **must** be called after all updates
 to the `SubmitEntry` are complete and **before** the ring is entered. The
 callback is used for synchronization across goroutines.
-
 
 # Other References
 https://cor3ntin.github.io/posts/iouring/
