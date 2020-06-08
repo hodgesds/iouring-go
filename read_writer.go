@@ -3,7 +3,6 @@
 package iouring
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"sync/atomic"
@@ -33,18 +32,6 @@ func (i *ringFIO) getCqe(reqID uint64) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if i.r.debug {
-		fmt.Printf("enter complete\n")
-		sqHead := *i.r.sq.Head
-		sqTail := *i.r.sq.Tail
-		sqMask := *i.r.sq.Mask
-		cqHead := *i.r.cq.Head
-		cqTail := *i.r.cq.Tail
-		cqMask := *i.r.cq.Mask
-		fmt.Printf("sq head: %v tail: %v\nsq entries: %+v\n", sqHead&sqMask, sqTail&sqMask, i.r.sq.Entries)
-		fmt.Printf("sq array: %+v\n", i.r.sq.Array)
-		fmt.Printf("cq head: %v tail: %v\ncq entries: %+v\n", cqHead&cqMask, cqTail&cqMask, i.r.cq.Entries)
-	}
 
 	cq := i.r.cq
 	foundIdx := 0
@@ -60,9 +47,6 @@ findCqe:
 			if cqe.Res < 0 {
 				return 0, syscall.Errno(-cqe.Res)
 			}
-			//if cqe.Res == 0 {
-			//	return 0, io.EOF
-			//}
 			atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 			foundIdx = x
 			i.c.complete(foundIdx)
@@ -81,9 +65,6 @@ findCqe:
 			if cqe.Res < 0 {
 				return 0, syscall.Errno(-cqe.Res)
 			}
-			//if cqe.Res == 0 {
-			//	return 0, io.EOF
-			//}
 			atomic.StoreInt64(i.fOffset, atomic.LoadInt64(i.fOffset)+int64(cqe.Res))
 			foundIdx = x
 			i.c.complete(foundIdx)
