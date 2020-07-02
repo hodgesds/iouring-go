@@ -65,6 +65,9 @@ func WithEnterErrHandler(f func(error)) RingOption {
 func WithDeadline(d time.Duration) RingOption {
 	return func(r *Ring) error {
 		r.deadline = d
+		s := newRingSubmitter(r, d)
+		go s.run()
+		r.submitter = s
 		return nil
 	}
 }

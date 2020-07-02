@@ -36,6 +36,7 @@ type Ring struct {
 	fileReg         FileRegistry
 	deadline        time.Duration
 	enterErrHandler func(error)
+	submitter       submitter
 
 	stop           chan struct{}
 	completions    chan *completionRequest
@@ -240,6 +241,9 @@ func (r *Ring) Close() error {
 		if err := r.closeCq(); err != nil {
 			return err
 		}
+	}
+	if r.submitter != nil {
+		r.submitter.stop()
 	}
 	return syscall.Close(r.fd)
 }

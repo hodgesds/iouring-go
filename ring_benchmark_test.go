@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,6 +43,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, test := range tests {
 		benchmarkFileWrite(b, test.writeSize)
 		benchmarkRingWrite(b, test.ringSize, test.writeSize)
+		//benchmarkRingDeadlineWrite(b, test.ringSize, test.writeSize)
 	}
 }
 
@@ -106,6 +108,37 @@ func benchmarkFileWrite(b *testing.B, writeSize int) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				f.Write(data)
+			}
+		},
+	)
+}
+
+func benchmarkRingDeadlineWrite(b *testing.B, ringSize uint, writeSize int) {
+	b.Run(
+		fmt.Sprintf("ring-%d-deadlinewrite-%d", ringSize, writeSize),
+		func(b *testing.B) {
+			r, err := New(ringSize, &Params{Features: FeatNoDrop}, WithDeadline(100*time.Microsecond))
+			require.NoError(b, err)
+			require.NotNil(b, r)
+
+			f, err := ioutil.TempFile("", "example2")
+			require.NoError(b, err)
+			defer os.Remove(f.Name())
+
+			rw, err := r.FileReadWriter(f)
+			require.NoError(b, err)
+
+			data := make([]byte, writeSize)
+
+			b.SetBytes(int64(writeSize))
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				rw.Write(data)
+				//_, err = rw.Write(data)
+				//if err != nil {
+				//	b.Fatal(err)
+				//}
 			}
 		},
 	)
