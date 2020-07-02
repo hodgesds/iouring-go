@@ -3,6 +3,8 @@
 package iouring
 
 import (
+	"time"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -55,6 +57,14 @@ func WithID(id uint64) RingOption {
 func WithEnterErrHandler(f func(error)) RingOption {
 	return func(r *Ring) error {
 		r.enterErrHandler = f
+		return nil
+	}
+}
+
+// WithDeadline is used to configure the deadline for submitting IO.
+func WithDeadline(d time.Duration) RingOption {
+	return func(r *Ring) error {
+		r.deadline = d
 		return nil
 	}
 }

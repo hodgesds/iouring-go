@@ -34,6 +34,7 @@ type Ring struct {
 	idx             *uint64
 	debug           bool
 	fileReg         FileRegistry
+	deadline        time.Duration
 	enterErrHandler func(error)
 
 	stop           chan struct{}
