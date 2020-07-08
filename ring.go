@@ -27,6 +27,7 @@ type Ring struct {
 	fd              int
 	p               *Params
 	cq              *CompletionQueue
+	c               *completer
 	cqMu            sync.RWMutex
 	sq              *SubmitQueue
 	sqMu            sync.RWMutex
@@ -76,6 +77,7 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 		eventFd:     -1,
 		stop:        make(chan struct{}, 32),
 		completions: make(chan *completionRequest, len(cq.Entries)),
+		c:           newCompleter(&cq, 512),
 		completionPool: sync.Pool{
 			New: func() interface{} {
 				return &completionRequest{
@@ -90,6 +92,7 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 		}
 	}
 	go r.run()
+	go r.c.run()
 
 	return r, nil
 }
@@ -382,6 +385,10 @@ func (r *Ring) FileRegistry() FileRegistry {
 // Note that is is not valid to use other operations on the file (Seek/Close)
 // in combination with the reader.
 func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
+	return r.fileReadWriter(f)
+}
+
+func (r *Ring) fileReadWriter(f *os.File) (*ringFIO, error) {
 	var offset int64
 	if o, err := f.Seek(0, 0); err == nil {
 		offset = int64(o)
@@ -390,9 +397,8 @@ func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
 		r:       r,
 		f:       f,
 		fOffset: &offset,
-		c:       newCompleter(r.cq, 512),
+		c:       r.c,
 	}
-	go rw.c.run()
 	if r.fileReg == nil {
 		return rw, nil
 	}

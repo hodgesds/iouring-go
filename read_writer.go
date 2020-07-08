@@ -27,13 +27,15 @@ type ringFIO struct {
 }
 
 // getCqe is used for getting a CQE result and will retry up to one time.
-func (i *ringFIO) getCqe(reqID uint64) (int, error) {
+func (i *ringFIO) getCqe(reqID uint64, count, min int) (int, error) {
 	if i.r.submitter != nil {
 		i.r.submitter.submit(reqID)
 	} else {
-		_, err := i.r.Enter(uint(1), uint(1), EnterGetEvents, nil)
-		if err != nil {
-			return 0, err
+		if count > 0 || min > 0 {
+			_, err := i.r.Enter(uint(count), uint(min), EnterGetEvents, nil)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 
@@ -82,8 +84,15 @@ findCqe:
 }
 
 // Write implements the io.Writer interface.
-//go:nosplit
 func (i *ringFIO) Write(b []byte) (int, error) {
+	id, err := i.prepareWrite(b)
+	if err != nil {
+		return 0, err
+	}
+	return i.getCqe(id, 1, 1)
+}
+
+func (i *ringFIO) prepareWrite(b []byte) (uint64, error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -106,13 +115,26 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
-
-	return i.getCqe(reqID)
+	return reqID, nil
 }
 
 // Read implements the io.Reader interface.
-//go:nosplit
 func (i *ringFIO) Read(b []byte) (int, error) {
+	id, err := i.prepareRead(b)
+	if err != nil {
+		return 0, err
+	}
+	n, err := i.getCqe(id, 1, 1)
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+func (i *ringFIO) prepareRead(b []byte) (uint64, error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -135,15 +157,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
-
-	n, err := i.getCqe(reqID)
-	if err != nil {
-		return 0, err
-	}
-	if n == 0 {
-		return n, io.EOF
-	}
-	return n, nil
+	return reqID, nil
 }
 
 // WriteAt implements the io.WriterAt interface.
@@ -171,7 +185,7 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID)
+	return i.getCqe(reqID, 1, 1)
 }
 
 // ReadAt implements the io.ReaderAt interface.
@@ -199,7 +213,7 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	n, err := i.getCqe(reqID)
+	n, err := i.getCqe(reqID, 1, 1)
 	if err != nil {
 		return 0, err
 	}
