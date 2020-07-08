@@ -15,35 +15,42 @@ import (
 
 func BenchmarkWrite(b *testing.B) {
 	tests := []struct {
-		ringSize  uint
-		writeSize int
+		ringSize   uint
+		writeSize  int
+		multiwrite int
 	}{
 		{
-			ringSize:  1024,
-			writeSize: 128,
+			ringSize:   1024,
+			writeSize:  128,
+			multiwrite: 1,
 		},
 		{
-			ringSize:  1024,
-			writeSize: 512,
+			ringSize:   1024,
+			writeSize:  512,
+			multiwrite: 1,
 		},
 		{
-			ringSize:  1024,
-			writeSize: 1024,
+			ringSize:   1024,
+			writeSize:  1024,
+			multiwrite: 1,
 		},
 		{
-			ringSize:  8192,
-			writeSize: 2048,
+			ringSize:   8192,
+			writeSize:  2048,
+			multiwrite: 2,
 		},
 		{
-			ringSize:  8192,
-			writeSize: 4096,
+			ringSize:   8192,
+			writeSize:  4096,
+			multiwrite: 2,
 		},
 	}
 
 	for _, test := range tests {
 		benchmarkFileWrite(b, test.writeSize)
 		benchmarkRingWrite(b, test.ringSize, test.writeSize)
-		//benchmarkRingDeadlineWrite(b, test.ringSize, test.writeSize)
+		benchmarkRingMultiWrite(b, test.ringSize, test.writeSize, test.multiwrite)
+		benchmarkRingDeadlineWrite(b, test.ringSize, test.writeSize)
 	}
 }
 
@@ -121,7 +128,7 @@ func benchmarkRingDeadlineWrite(b *testing.B, ringSize uint, writeSize int) {
 			require.NoError(b, err)
 			require.NotNil(b, r)
 
-			f, err := ioutil.TempFile("", "example2")
+			f, err := ioutil.TempFile("", "example")
 			require.NoError(b, err)
 			defer os.Remove(f.Name())
 
@@ -134,11 +141,43 @@ func benchmarkRingDeadlineWrite(b *testing.B, ringSize uint, writeSize int) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				rw.Write(data)
-				//_, err = rw.Write(data)
-				//if err != nil {
-				//	b.Fatal(err)
-				//}
+				_, err = rw.Write(data)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		},
+	)
+}
+
+func benchmarkRingMultiWrite(b *testing.B, ringSize uint, writeSize int, multiwrite int) {
+	b.Run(
+		fmt.Sprintf("ring-%d-multiwrite%d-%d", ringSize, multiwrite, writeSize),
+		func(b *testing.B) {
+			r, err := New(ringSize, &Params{Features: FeatNoDrop})
+			require.NoError(b, err)
+			require.NotNil(b, r)
+
+			files := make([]*os.File, multiwrite)
+			for i := 0; i < multiwrite; i++ {
+				f, err := ioutil.TempFile("", "example")
+				require.NoError(b, err)
+				defer os.Remove(f.Name())
+				files[i] = f
+			}
+			w, err := r.MultiFileWriter(files...)
+			require.NoError(b, err)
+
+			data := make([]byte, writeSize)
+
+			b.SetBytes(int64(writeSize * multiwrite))
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, err = w.Write(data)
+				if err != nil {
+					b.Fatal(err)
+				}
 			}
 		},
 	)
