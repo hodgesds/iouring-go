@@ -31,7 +31,7 @@ func TestNew(t *testing.T) {
 	require.Equal(t, uint64(1), r.ID())
 	require.NotNil(t, r.FileRegistry())
 	require.Equal(t, r.cq, r.CQ())
-	require.Equal(t, r.cq, r.SQ())
+	require.Equal(t, r.sq, r.SQ())
 
 	require.NoError(t, r.Close())
 }
