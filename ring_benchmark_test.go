@@ -49,7 +49,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, test := range tests {
 		benchmarkFileWrite(b, test.writeSize)
 		benchmarkRingWrite(b, test.ringSize, test.writeSize)
-		benchmarkRingMultiWrite(b, test.ringSize, test.writeSize, test.multiwrite)
+		//benchmarkRingMultiWrite(b, test.ringSize, test.writeSize, test.multiwrite)
 		benchmarkRingDeadlineWrite(b, test.ringSize, test.writeSize)
 	}
 }

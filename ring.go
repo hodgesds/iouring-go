@@ -396,6 +396,7 @@ func (r *Ring) fileReadWriter(f *os.File) (*ringFIO, error) {
 	rw := &ringFIO{
 		r:       r,
 		f:       f,
+		fd:      int32(f.Fd()),
 		fOffset: &offset,
 		c:       r.c,
 	}
