@@ -27,6 +27,11 @@ func TestNew(t *testing.T) {
 	require.NotNil(t, r.cq.Tail)
 	require.NotNil(t, r.cq.Mask)
 	require.NotNil(t, r.cq.Entries)
+	require.Equal(t, r.fd, r.Fd())
+	require.Equal(t, uint64(1), r.ID())
+	require.NotNil(t, r.FileRegistry())
+	require.Equal(t, r.cq, r.CQ())
+	require.Equal(t, r.cq, r.SQ())
 
 	require.NoError(t, r.Close())
 }
