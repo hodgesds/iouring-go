@@ -13,7 +13,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkWrite(b *testing.B) {
+func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
+	tests := []struct {
+		ringSize  uint
+		writeSize int
+	}{
+		{
+			ringSize:  1024,
+			writeSize: 128,
+		},
+		{
+			ringSize:  1024,
+			writeSize: 512,
+		},
+		{
+			ringSize:  1024,
+			writeSize: 1024,
+		},
+		{
+			ringSize:  8192,
+			writeSize: 2048,
+		},
+		{
+			ringSize:  8192,
+			writeSize: 4096,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(
+			fmt.Sprintf("ring-%d-write-%d", test.ringSize, test.writeSize),
+			func(b *testing.B) {
+				r, err := New(test.ringSize, &Params{
+					Features: FeatNoDrop,
+				},
+				)
+				require.NoError(b, err)
+				require.NotNil(b, r)
+
+				//bufPool := sync.Pool{
+				//	New: func() interface{} {
+				//		return make([]byte, writeSize)
+				//	},
+				//}
+
+				f, err := ioutil.TempFile("", "example")
+				require.NoError(b, err)
+				defer os.Remove(f.Name())
+
+				rw, err := r.FileReadWriter(f)
+				require.NoError(b, err)
+
+				data := make([]byte, test.writeSize)
+
+				b.SetBytes(int64(test.writeSize))
+				b.ResetTimer()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					//data := bufPool.Get().([]byte)
+					_, err = rw.Write(data)
+					if err != nil {
+						b.Fatal(err)
+					}
+					//bufPool.Put(data)
+				}
+			},
+		)
+	}
+}
+
+func BenchmarkFileWrite(b *testing.B) {
 	tests := []struct {
 		ringSize   uint
 		writeSize  int
@@ -45,140 +114,157 @@ func BenchmarkWrite(b *testing.B) {
 			multiwrite: 2,
 		},
 	}
-
 	for _, test := range tests {
-		benchmarkFileWrite(b, test.writeSize)
-		benchmarkRingWrite(b, test.ringSize, test.writeSize)
-		//benchmarkRingMultiWrite(b, test.ringSize, test.writeSize, test.multiwrite)
-		benchmarkRingDeadlineWrite(b, test.ringSize, test.writeSize)
+		b.Run(
+			fmt.Sprintf("os-file-write-%d", test.writeSize),
+			func(b *testing.B) {
+				data := make([]byte, test.writeSize)
+				n, err := rand.Read(data)
+				require.NoError(b, err)
+				require.Equal(b, test.writeSize, int(n))
+
+				f, err := os.OpenFile(
+					fmt.Sprintf("os-file-write-%d.test", test.writeSize),
+					os.O_RDWR|os.O_CREATE, 0644)
+				require.NoError(b, err)
+				defer os.Remove(f.Name())
+
+				b.SetBytes(int64(len(data)))
+				b.ResetTimer()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					f.Write(data)
+				}
+			},
+		)
 	}
 }
 
-func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
-	b.Run(
-		fmt.Sprintf("ring-%d-write-%d", ringSize, writeSize),
-		func(b *testing.B) {
-			r, err := New(ringSize, &Params{
-				Features: FeatNoDrop,
-			},
-			)
-			require.NoError(b, err)
-			require.NotNil(b, r)
-
-			//bufPool := sync.Pool{
-			//	New: func() interface{} {
-			//		return make([]byte, writeSize)
-			//	},
-			//}
-
-			f, err := ioutil.TempFile("", "example")
-			require.NoError(b, err)
-			defer os.Remove(f.Name())
-
-			rw, err := r.FileReadWriter(f)
-			require.NoError(b, err)
-
-			data := make([]byte, writeSize)
-
-			b.SetBytes(int64(writeSize))
-			b.ResetTimer()
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				//data := bufPool.Get().([]byte)
-				_, err = rw.Write(data)
-				if err != nil {
-					b.Fatal(err)
-				}
-				//bufPool.Put(data)
-			}
+func BenchmarkRingDeadlineWrite(b *testing.B) {
+	tests := []struct {
+		ringSize  uint
+		writeSize int
+		deadline  time.Duration
+	}{
+		{
+			ringSize:  1024,
+			writeSize: 128,
+			deadline:  1 * time.Millisecond,
 		},
-	)
-}
-
-func benchmarkFileWrite(b *testing.B, writeSize int) {
-	b.Run(
-		fmt.Sprintf("os-file-write-%d", writeSize),
-		func(b *testing.B) {
-			data := make([]byte, writeSize)
-			n, err := rand.Read(data)
-			require.NoError(b, err)
-			require.Equal(b, writeSize, int(n))
-
-			f, err := os.OpenFile(
-				fmt.Sprintf("os-file-write-%d.test", writeSize),
-				os.O_RDWR|os.O_CREATE, 0644)
-			require.NoError(b, err)
-			defer os.Remove(f.Name())
-
-			b.SetBytes(int64(len(data)))
-			b.ResetTimer()
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				f.Write(data)
-			}
+		{
+			ringSize:  1024,
+			writeSize: 512,
+			deadline:  1 * time.Millisecond,
 		},
-	)
-}
-
-func benchmarkRingDeadlineWrite(b *testing.B, ringSize uint, writeSize int) {
-	b.Run(
-		fmt.Sprintf("ring-%d-deadlinewrite-%d", ringSize, writeSize),
-		func(b *testing.B) {
-			r, err := New(ringSize, &Params{Features: FeatNoDrop}, WithDeadline(100*time.Microsecond))
-			require.NoError(b, err)
-			require.NotNil(b, r)
-
-			f, err := ioutil.TempFile("", "example")
-			require.NoError(b, err)
-			defer os.Remove(f.Name())
-
-			rw, err := r.FileReadWriter(f)
-			require.NoError(b, err)
-
-			data := make([]byte, writeSize)
-
-			b.SetBytes(int64(writeSize))
-			b.ResetTimer()
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				_, err = rw.Write(data)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
+		{
+			ringSize:  1024,
+			writeSize: 1024,
+			deadline:  1 * time.Millisecond,
 		},
-	)
-}
+		{
+			ringSize:  8192,
+			writeSize: 2048,
+			deadline:  1 * time.Millisecond,
+		},
+		{
+			ringSize:  8192,
+			writeSize: 4096,
+			deadline:  1 * time.Millisecond,
+		},
+	}
+	for _, test := range tests {
+		b.Run(
+			fmt.Sprintf("ring-%d-deadline-%v-%d", test.ringSize, test.deadline.String(), test.writeSize),
+			func(b *testing.B) {
+				r, err := New(test.ringSize, &Params{Features: FeatNoDrop}, WithDeadline(test.deadline))
+				require.NoError(b, err)
+				require.NotNil(b, r)
 
-func benchmarkRingMultiWrite(b *testing.B, ringSize uint, writeSize int, multiwrite int) {
-	b.Run(
-		fmt.Sprintf("ring-%d-multiwrite%d-%d", ringSize, multiwrite, writeSize),
-		func(b *testing.B) {
-			r, err := New(ringSize, &Params{Features: FeatNoDrop})
-			require.NoError(b, err)
-			require.NotNil(b, r)
-
-			files := make([]*os.File, multiwrite)
-			for i := 0; i < multiwrite; i++ {
 				f, err := ioutil.TempFile("", "example")
 				require.NoError(b, err)
 				defer os.Remove(f.Name())
-				files[i] = f
-			}
-			w, err := r.MultiFileWriter(files...)
-			require.NoError(b, err)
 
-			data := make([]byte, writeSize)
+				rw, err := r.FileReadWriter(f)
+				require.NoError(b, err)
 
-			b.SetBytes(int64(writeSize * multiwrite))
-			b.ResetTimer()
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				_, err = w.Write(data)
-				if err != nil {
-					b.Fatal(err)
+				data := make([]byte, test.writeSize)
+
+				b.SetBytes(int64(test.writeSize))
+				b.ResetTimer()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					_, err = rw.Write(data)
+					if err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
+			},
+		)
+	}
+}
+
+func BenchmarkRingMultiWrite(b *testing.B) {
+	tests := []struct {
+		ringSize   uint
+		writeSize  int
+		multiwrite int
+	}{
+		{
+			ringSize:   1024,
+			writeSize:  128,
+			multiwrite: 1,
 		},
-	)
+		{
+			ringSize:   1024,
+			writeSize:  512,
+			multiwrite: 1,
+		},
+		{
+			ringSize:   1024,
+			writeSize:  1024,
+			multiwrite: 1,
+		},
+		{
+			ringSize:   8192,
+			writeSize:  2048,
+			multiwrite: 2,
+		},
+		{
+			ringSize:   8192,
+			writeSize:  4096,
+			multiwrite: 2,
+		},
+	}
+	for _, test := range tests {
+		b.Run(
+			fmt.Sprintf("ring-%d-multiwrite%d-%d", test.ringSize, test.multiwrite, test.writeSize),
+			func(b *testing.B) {
+				r, err := New(test.ringSize, &Params{Features: FeatNoDrop})
+				require.NoError(b, err)
+				require.NotNil(b, r)
+
+				files := make([]*os.File, test.multiwrite)
+				for i := 0; i < test.multiwrite; i++ {
+					f, err := ioutil.TempFile("", "example")
+					require.NoError(b, err)
+					defer os.Remove(f.Name())
+					files[i] = f
+				}
+				w, err := r.MultiFileWriter(files...)
+				require.NoError(b, err)
+
+				data := make([]byte, test.writeSize)
+
+				b.SetBytes(int64(test.writeSize * test.multiwrite))
+				b.ResetTimer()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					_, err = w.Write(data)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		)
+	}
 }
