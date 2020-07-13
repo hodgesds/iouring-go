@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func benchmarkRingWrite(b *testing.B, ringSize uint, writeSize int) {
+func BenchmarkRingWrite(b *testing.B) {
 	tests := []struct {
 		ringSize  uint
 		writeSize int
@@ -154,22 +154,22 @@ func BenchmarkRingDeadlineWrite(b *testing.B) {
 		{
 			ringSize:  1024,
 			writeSize: 512,
-			deadline:  1 * time.Millisecond,
+			deadline:  100 * time.Microsecond,
 		},
 		{
 			ringSize:  1024,
 			writeSize: 1024,
-			deadline:  1 * time.Millisecond,
+			deadline:  10 * time.Microsecond,
 		},
 		{
 			ringSize:  8192,
 			writeSize: 2048,
-			deadline:  1 * time.Millisecond,
+			deadline:  1 * time.Microsecond,
 		},
 		{
 			ringSize:  8192,
 			writeSize: 4096,
-			deadline:  1 * time.Millisecond,
+			deadline:  1 * time.Microsecond,
 		},
 	}
 	for _, test := range tests {
@@ -204,6 +204,7 @@ func BenchmarkRingDeadlineWrite(b *testing.B) {
 }
 
 func BenchmarkRingMultiWrite(b *testing.B) {
+	b.Skip()
 	tests := []struct {
 		ringSize   uint
 		writeSize  int
