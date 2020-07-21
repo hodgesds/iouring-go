@@ -44,6 +44,7 @@ func (r *Ring) prepareStatx(
 	// BUG: `path` string pointer doesn't seem to work properly.
 	// See liburing io_uring_prep_statx:
 	// https://github.com/axboe/liburing/blob/master/src/include/liburing.h#L371
+	// https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/io_uring.c?h=v5.8-rc6#n3385
 	sqe.Opcode = Statx
 	sqe.Fd = int32(dirfd)
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&path)))

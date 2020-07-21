@@ -35,7 +35,7 @@ func TestRingStatx(t *testing.T) {
 	defer d.Close()
 
 	err = r.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
-	//require.NoError(t, err)
+	require.NoError(t, err)
 
 	err = unix.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x2)
 	require.NoError(t, err)
