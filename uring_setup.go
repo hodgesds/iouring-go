@@ -4,6 +4,7 @@ package iouring
 
 import (
 	"reflect"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -96,16 +97,19 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 	}
 
 	// Making mmap'd slices is annoying.
+	// BUG: don't use composite literals
 	sq.Entries = *(*[]SubmitEntry)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(sqePtr),
 		Len:  int(p.SqEntries),
 		Cap:  int(p.SqEntries),
 	}))
+	// BUG: don't use composite literals
 	sq.Array = *(*[]uint32)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(unsafe.Pointer(sqPtr + uintptr(p.SqOffset.Array))),
 		Len:  int(p.SqEntries),
 		Cap:  int(p.SqEntries),
 	}))
+	runtime.KeepAlive(sqePtr)
 
 	if singleMmap {
 		cqPtr = sqPtr
@@ -130,11 +134,14 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 	cq.Mask = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.RingMask))))
 	cq.Overflow = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Overflow))))
 
+	// BUG: don't use composite literals
 	cq.Entries = *(*[]CompletionEntry)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(uint(cqPtr) + uint(p.CqOffset.Cqes)),
 		Len:  int(p.CqEntries),
 		Cap:  int(p.CqEntries),
 	}))
+	// See: https://github.com/jlauinger/go-safer
+	runtime.KeepAlive(cqPtr)
 
 	return nil
 }
