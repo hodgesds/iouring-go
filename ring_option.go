@@ -66,6 +66,7 @@ func WithDeadline(d time.Duration) RingOption {
 	return func(r *Ring) error {
 		r.deadline = d
 		s := newRingSubmitter(r, d)
+		// This is an ugly hack....
 		go s.run()
 		r.submitter = s
 		return nil
