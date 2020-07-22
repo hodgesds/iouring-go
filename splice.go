@@ -3,6 +3,8 @@
 package iouring
 
 import (
+	"syscall"
+
 	"github.com/pkg/errors"
 )
 
