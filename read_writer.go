@@ -5,6 +5,7 @@ package iouring
 import (
 	"io"
 	"os"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -29,14 +30,12 @@ type ringFIO struct {
 
 // getCqe is used for getting a CQE result and will retry up to one time.
 func (i *ringFIO) getCqe(reqID uint64, count, min int) (int, error) {
-	if i.r.submitter != nil {
-		i.r.submitter.submit(reqID)
-	} else {
-		if count > 0 || min > 0 {
-			_, err := i.r.Enter(uint(count), uint(min), EnterGetEvents, nil)
-			if err != nil {
-				return 0, err
-			}
+	// TODO: consider adding the submitter interface here, or move out the
+	// submit function from this method all together.
+	if count > 0 || min > 0 {
+		_, err := i.r.Enter(uint(count), uint(min), EnterGetEvents, nil)
+		if err != nil {
+			return 0, err
 		}
 	}
 
@@ -90,7 +89,9 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return i.getCqe(id, 1, 1)
+	n, err := i.getCqe(id, 1, 1)
+	runtime.KeepAlive(b)
+	return n, err
 }
 
 func (i *ringFIO) prepareWrite(b []byte) (uint64, error) {
@@ -158,6 +159,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	if n == 0 {
 		return n, io.EOF
 	}
+	runtime.KeepAlive(b)
 	return n, nil
 }
 
@@ -186,7 +188,9 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	return i.getCqe(reqID, 1, 1)
+	n, err := i.getCqe(reqID, 1, 1)
+	runtime.KeepAlive(b)
+	return n, err
 }
 
 // ReadAt implements the io.ReaderAt interface.
@@ -215,6 +219,7 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	ready()
 
 	n, err := i.getCqe(reqID, 1, 1)
+	runtime.KeepAlive(b)
 	if err != nil {
 		return 0, err
 	}

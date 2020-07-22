@@ -5,6 +5,7 @@ package iouring
 import (
 	"context"
 	"net"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -32,7 +33,6 @@ type ringConn struct {
 
 // getCqe is used for getting a CQE result.
 func (c *ringConn) getCqe(ctx context.Context, reqID uint64) (int, error) {
-	defer c.rePoll()
 	// TODO: Where should this repoll go?
 	_, err := c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
 	if err != nil {
@@ -115,12 +115,12 @@ func (c *ringConn) Read(b []byte) (int, error) {
 	ctx := context.Background()
 
 	n, err := c.getCqe(ctx, reqID)
+	runtime.KeepAlive(b)
 	return n, err
 }
 
 // Write implements the net.Conn interface.
 func (c *ringConn) Write(b []byte) (n int, err error) {
-	c.rePoll()
 	sqe, commit := c.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -136,7 +136,9 @@ func (c *ringConn) Write(b []byte) (n int, err error) {
 	sqe.UserData = reqID
 	commit()
 
-	return c.getCqe(context.Background(), reqID)
+	n, err = c.getCqe(context.Background(), reqID)
+	runtime.KeepAlive(b)
+	return n, err
 }
 
 // Close implements the net.Conn interface.
