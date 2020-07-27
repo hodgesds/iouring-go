@@ -41,3 +41,31 @@ func TestRingStatx(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, x1, x2)
 }
+
+func BenchmarkStatxRing(b *testing.B) {
+	r, err := New(2048, nil)
+	require.NoError(b, err)
+	require.NotNil(b, r)
+
+	path, err := os.Getwd()
+	require.NoError(b, err)
+
+	f, err := ioutil.TempFile(path, "statx")
+	require.NoError(b, err)
+	defer os.Remove(f.Name())
+
+	_, err = f.Write([]byte("test"))
+	require.NoError(b, err)
+
+	var x1 unix.Statx_t
+	d, err := os.Open(path)
+	require.NoError(b, err)
+	defer d.Close()
+
+	for i := 0; i < b.N; i++ {
+		err = r.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
