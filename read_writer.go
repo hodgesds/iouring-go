@@ -85,25 +85,26 @@ findCqe:
 
 // Write implements the io.Writer interface.
 func (i *ringFIO) Write(b []byte) (int, error) {
-	id, err := i.prepareWrite(b)
+	id, ready, err := i.prepareWrite(b, 0)
 	if err != nil {
 		return 0, err
 	}
+	ready()
 	n, err := i.getCqe(id, 1, 1)
 	runtime.KeepAlive(b)
 	return n, err
 }
 
-func (i *ringFIO) prepareWrite(b []byte) (uint64, error) {
+func (i *ringFIO) prepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, nil, errors.New("ring unavailable")
 	}
 
 	sqe.Opcode = Write
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
+	sqe.Flags = flags
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
@@ -115,12 +116,10 @@ func (i *ringFIO) prepareWrite(b []byte) (uint64, error) {
 	reqID := i.r.ID()
 	sqe.UserData = reqID
 
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-	return reqID, nil
+	return reqID, ready, nil
 }
 
-func (i *ringFIO) prepareRead(b []byte) (uint64, error) {
+func (i *ringFIO) prepareRead(b []byte, flags uint8) (uint64, error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
@@ -129,7 +128,7 @@ func (i *ringFIO) prepareRead(b []byte) (uint64, error) {
 	sqe.Opcode = Read
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
-	sqe.Flags = 0
+	sqe.Flags = flags
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
 
 	// This is probably a violation of the memory model, but in order for
@@ -148,7 +147,7 @@ func (i *ringFIO) prepareRead(b []byte) (uint64, error) {
 
 // Read implements the io.Reader interface.
 func (i *ringFIO) Read(b []byte) (int, error) {
-	id, err := i.prepareRead(b)
+	id, err := i.prepareRead(b, 0)
 	if err != nil {
 		return 0, err
 	}

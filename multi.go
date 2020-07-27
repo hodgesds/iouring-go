@@ -3,8 +3,10 @@
 package iouring
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"runtime"
 )
 
 // MultiFileWriter works just like io.MultiWriter but is io_uring backed and
@@ -31,30 +33,48 @@ type multiFileIO struct {
 func (m *multiFileIO) Write(b []byte) (int, error) {
 	ids := make([]uint64, len(m.fios))
 	var (
-		err error
-		id  uint64
+		err   error
+		id    uint64
+		ready func()
 	)
 	for i, f := range m.fios {
-		if i >= 1 {
-			bb := make([]byte, len(b))
-			copy(bb, b)
-			id, err = f.prepareWrite(bb)
-		} else {
-			id, err = f.prepareWrite(b)
-		}
+		//if i >= 1 {
+		//	// Is copy needed for unique pointers?
+		//	bb := make([]byte, len(b))
+		//	copy(bb, b)
+		//	id, err = f.prepareWrite(bb)
+		//} else {
+		id, ready, err = f.prepareWrite(b, 0)
+		//}
 		if err != nil {
 			return 0, err
 		}
 		ids[i] = id
+		ready()
 	}
 
+	fmt.Printf("%+v\n", m.fios[0].r.sq.Entries[:5])
+	fmt.Printf("%+v\n", m.fios[0].r.cq.Entries[:5])
+	_, err = m.fios[0].r.Enter(uint(len(ids)), uint(len(ids)), EnterGetEvents, nil)
+	//_, err = m.fios[0].r.Enter(uint(len(ids)), uint(len(ids)), 0, nil)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("%+v\n", m.fios[0].r.sq.Entries[:5])
+	fmt.Printf("%+v\n", m.fios[0].r.cq.Entries[:5])
+	fmt.Printf("%+v\n", m.fios[0])
+
 	// The first entry submits all the requests.
-	n, err := m.fios[0].getCqe(ids[0], len(ids), len(ids))
+	n, err := m.fios[0].getCqe(ids[0], 0, 0)
 	if err != nil || len(ids) == 1 {
 		return n, err
 	}
 
 	for i := 1; i < len(ids); i++ {
+		fmt.Printf("submit: head: %v tail: %v\n", m.fios[0].r.SubmitHead(), m.fios[0].r.SubmitTail())
+		fmt.Printf("complete: head: %v tail: %v\n", m.fios[0].r.CompleteHead(), m.fios[0].r.CompleteTail())
+		fmt.Printf("%+v\n", m.fios[0].r.sq.Entries[:5])
+		fmt.Printf("%+v\n", m.fios[i].r.cq.Entries[:5])
 		// BUG: This is obviously a bug.
 		// When multiple SQEs are submitted that point to the same go
 		// address, in this case the byte slice "b" io_uring seems to
@@ -67,6 +87,7 @@ func (m *multiFileIO) Write(b []byte) (int, error) {
 		}
 		n += ni
 	}
+	runtime.KeepAlive(b)
 	return n, nil
 }
 

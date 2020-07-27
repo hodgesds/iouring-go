@@ -16,15 +16,15 @@ func TestMultiWriter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	f1, err := ioutil.TempFile("", "example")
+	f1, err := ioutil.TempFile("", "multi")
 	require.NoError(t, err)
 	defer os.Remove(f1.Name())
 
-	f2, err := ioutil.TempFile("", "example")
+	f2, err := ioutil.TempFile("", "multi")
 	require.NoError(t, err)
 	defer os.Remove(f2.Name())
 
-	f3, err := ioutil.TempFile("", "example")
+	f3, err := ioutil.TempFile("", "multi")
 	require.NoError(t, err)
 	defer os.Remove(f2.Name())
 
