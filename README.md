@@ -107,6 +107,84 @@ func main() {
 }
 ```
 
+# Benchmarks
+I haven't really wanted to add any benchmarks as I haven't spent the time to
+really write good benchmarks. However, here's some initial numbers with some
+comments:
+
+```
+BenchmarkFileWrite
+BenchmarkFileWrite/os-file-write-128
+BenchmarkFileWrite/os-file-write-128-8                    245845              4649 ns/op          27.53 MB/s           0 B/op          0 allocs/op
+BenchmarkFileWrite/os-file-write-512
+BenchmarkFileWrite/os-file-write-512-8                    243472              4867 ns/op         105.20 MB/s           0 B/op          0 allocs/op
+BenchmarkFileWrite/os-file-write-1024
+BenchmarkFileWrite/os-file-write-1024-8                   212593              5320 ns/op         192.48 MB/s           0 B/op          0 allocs/op
+BenchmarkFileWrite/os-file-write-2048
+BenchmarkFileWrite/os-file-write-2048-8                   183775              6047 ns/op         338.69 MB/s           0 B/op          0 allocs/op
+BenchmarkFileWrite/os-file-write-4096
+BenchmarkFileWrite/os-file-write-4096-8                   143608              7614 ns/op         537.98 MB/s           0 B/op          0 allocs/op
+BenchmarkRingWrite
+BenchmarkRingWrite/ring-1024-write-128
+BenchmarkRingWrite/ring-1024-write-128-8                  126456              9346 ns/op          13.70 MB/s          32 B/op          1 allocs/op
+BenchmarkRingWrite/ring-1024-write-512
+BenchmarkRingWrite/ring-1024-write-512-8                  119118             10702 ns/op          47.84 MB/s          32 B/op          1 allocs/op
+BenchmarkRingWrite/ring-1024-write-1024
+BenchmarkRingWrite/ring-1024-write-1024-8                 115423             10600 ns/op          96.60 MB/s          32 B/op          1 allocs/op
+BenchmarkRingWrite/ring-8192-write-2048
+BenchmarkRingWrite/ring-8192-write-2048-8                 103276             11006 ns/op         186.07 MB/s          32 B/op          1 allocs/op
+BenchmarkRingWrite/ring-8192-write-4096
+BenchmarkRingWrite/ring-8192-write-4096-8                  87127             13704 ns/op         298.90 MB/s          32 B/op          1 allocs/op
+BenchmarkRingDeadlineWrite
+BenchmarkRingDeadlineWrite/ring-1024-deadline-1ms-128
+BenchmarkRingDeadlineWrite/ring-1024-deadline-1ms-128-8                   102620              9979 ns/op          12.83 MB/s          32 B/op          1 allocs/op
+BenchmarkRingDeadlineWrite/ring-1024-deadline-100µs-512
+BenchmarkRingDeadlineWrite/ring-1024-deadline-100µs-512-8                 118021             10479 ns/op          48.86 MB/s          32 B/op          1 allocs/op
+BenchmarkRingDeadlineWrite/ring-1024-deadline-10µs-1024
+BenchmarkRingDeadlineWrite/ring-1024-deadline-10µs-1024-8                 103600             10232 ns/op         100.08 MB/s          32 B/op          1 allocs/op
+BenchmarkRingDeadlineWrite/ring-8192-deadline-1µs-2048
+BenchmarkRingDeadlineWrite/ring-8192-deadline-1µs-2048-8                  101726             11330 ns/op         180.75 MB/s          32 B/op          1 allocs/op
+BenchmarkRingDeadlineWrite/ring-8192-deadline-1µs-4096
+BenchmarkRingDeadlineWrite/ring-8192-deadline-1µs-4096-8                   87483             13547 ns/op         302.35 MB/s          32 B/op          1 allocs/op
+BenchmarkRingMultiWrite
+    BenchmarkRingMultiWrite: ring_benchmark_test.go:207: 
+```
+
+The first benchmark is just regualar `os.File` `Write` calls. This benchmark
+was run on Xeon E3-1505M v5 running on a luks encrypted consumer NVMe drive.
+The first thing to note is that the ns/op for for increasing write sizes scales
+from 4-8k. That seems pretty reasonable because the runtime is taking care of
+handling the system call.
+
+The `BenchmarkRingWrite` is roughly the same type of
+benchmark with an `Enter` being called for each SQE (essentially 1 syscall per
+write request). Note, that the ns/op is much higher because of all extra
+"stuff" the ring is handling. It also has a single allocation because it uses a
+monotonically increasing request id for tracking submissions with completions
+(using the user data field in the SQE). The other thing to note is the ring
+currently isn't using an eventfd for handling completions, it is doing the good
+old fashion brute force approach of submitting the request and then aggressively
+checking the CQ for the completion event. This is rather ineficient and burns
+some CPU cycles. Switching to an eventfd approach would probably be the ideal
+way to solve this problem. So the numbers showing roughly double the ns/op are
+pretty reasonable given the current design, which explains the lower throughput
+when doing a '1:1' comparison with Go file IO.
+
+The `BenchmarkRingDeadlineWrite` is kind of similar to the `BenchmarkRingWrite`
+only it uses a deadline approach for submissions. This in theory should handle
+concurrent writes far better, but there is no benchmark that is using
+concurrent writes as it is not the easiest type benchmark to write.
+
+The multiwrite API is still a WIP and it in theory should allow for "fan out"
+style writes to multiple FDs.
+
+Note, this library is still usable to a point where you can come up with your
+own concurrent io scheduling based on whatever huerestics you want (limiting IO
+requests per user?!?!). Implementing the perfect IO scheduler for Go is not
+really a goal of this project so this library will most likely have some
+tradeoffs (ie. my spare time) when it comes to optimal scheduling algorithms.
+If you are interested in this area feel free to send any PRs.
+
 # Interacting with the SQ
 The submission queue can be interacted with by using the
 [`SubmitEntry`](https://godoc.org/github.com/hodgesds/iouring-go#Ring.SubmitEntry)
