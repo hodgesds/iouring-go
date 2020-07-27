@@ -3,6 +3,8 @@
 package iouring
 
 import (
+	"reflect"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -23,6 +25,12 @@ func (r *Ring) Statx(
 		return err
 	}
 	errno, _ := r.complete(id)
+	// No GC until the request is done.
+	runtime.KeepAlive(statx)
+	runtime.KeepAlive(dirfd)
+	runtime.KeepAlive(path)
+	runtime.KeepAlive(mask)
+	runtime.KeepAlive(flags)
 	if errno < 0 {
 		return syscall.Errno(-errno)
 	}
@@ -41,13 +49,13 @@ func (r *Ring) prepareStatx(
 		return 0, errors.New("ring unavailable")
 	}
 
-	// BUG: `path` string pointer doesn't seem to work properly.
-	// See liburing io_uring_prep_statx:
-	// https://github.com/axboe/liburing/blob/master/src/include/liburing.h#L371
-	// https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/io_uring.c?h=v5.8-rc6#n3385
 	sqe.Opcode = Statx
 	sqe.Fd = int32(dirfd)
-	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&path)))
+	if path != "" {
+		// TODO: could probably avoid the conversion to []byte
+		b := saferStringToBytes(&path)
+		sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	}
 	sqe.Len = uint32(mask)
 	sqe.Offset = (uint64)(uintptr(unsafe.Pointer(statx)))
 	sqe.UFlags = int32(flags)
@@ -57,4 +65,34 @@ func (r *Ring) prepareStatx(
 
 	ready()
 	return reqID, nil
+}
+
+func saferStringToBytes(s *string) []byte {
+	bytes := make([]byte, 0, 0)
+
+	// Shameless stolen from:
+	// See: https://github.com/jlauinger/go-safer
+	// create the string and slice headers by casting. Obtain pointers to the
+	// headers to be able to change the slice header properties in the next step
+	stringHeader := (*reflect.StringHeader)(unsafe.Pointer(s))
+	sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&bytes))
+
+	// set the slice's length and capacity temporarily to zero (this is actually
+	// unnecessary here because the slice is already initialized as zero, but if
+	// you are reusing a different slice this is important
+	sliceHeader.Len = 0
+	sliceHeader.Cap = 0
+
+	// change the slice header data address
+	sliceHeader.Data = stringHeader.Data
+
+	// set the slice capacity and length to the string length
+	sliceHeader.Cap = stringHeader.Len
+	sliceHeader.Len = stringHeader.Len
+
+	// use the keep alive dummy function to make sure the original string s is not
+	// freed up until this point
+	runtime.KeepAlive(s)
+
+	return bytes
 }

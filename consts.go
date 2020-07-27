@@ -70,7 +70,9 @@ const (
 	SetupClamp uint = (1 << 4)
 	// SetupAttachWq  attach to existing wq
 	SetupAttachWq uint = (1 << 5)
+)
 
+const (
 	Nop Opcode = iota
 	Readv
 	Writev
@@ -104,9 +106,9 @@ const (
 	Splice
 	ProvideBuffers
 	RemoveBuffers
-
 	OpSupported = (1 << 0)
-
+)
+const (
 	/*
 	 * sqe->fsync_flags
 	 */
