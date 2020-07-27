@@ -100,7 +100,7 @@ func (i *ringFIO) prepareWrite(b []byte) (uint64, error) {
 		return 0, errors.New("ring unavailable")
 	}
 
-	sqe.Opcode = WriteFixed
+	sqe.Opcode = Write
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
@@ -126,7 +126,7 @@ func (i *ringFIO) prepareRead(b []byte) (uint64, error) {
 		return 0, errors.New("ring unavailable")
 	}
 
-	sqe.Opcode = ReadFixed
+	sqe.Opcode = Read
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
