@@ -73,7 +73,7 @@ func New(size uint, p *Params, opts ...RingOption) (*Ring, error) {
 		cq:          &cq,
 		sq:          &sq,
 		idx:         &idx,
-		fileReg:     NewFileRegistry(fd),
+		fileReg:     nil,
 		eventFd:     -1,
 		stop:        make(chan struct{}, 32),
 		completions: make(chan *completionRequest, len(cq.Entries)),
@@ -390,9 +390,11 @@ func (r *Ring) FileReadWriter(f *os.File) (ReadWriteSeekerCloser, error) {
 
 func (r *Ring) fileReadWriter(f *os.File) (*ringFIO, error) {
 	var offset int64
-	if o, err := f.Seek(0, 0); err == nil {
-		offset = int64(o)
+	o, err := f.Seek(0, 0)
+	if err != nil {
+		return nil, err
 	}
+	offset = int64(o)
 	rw := &ringFIO{
 		r:       r,
 		f:       f,
