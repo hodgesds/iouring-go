@@ -44,7 +44,7 @@ func (m *multiFileIO) Write(b []byte) (int, error) {
 		//	copy(bb, b)
 		//	id, err = f.prepareWrite(bb)
 		//} else {
-		id, ready, err = f.prepareWrite(b, 0)
+		id, ready, err = f.PrepareWrite(b, 0)
 		//}
 		if err != nil {
 			return 0, err

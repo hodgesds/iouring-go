@@ -20,10 +20,11 @@ func (r *Ring) Statx(
 	mask int,
 	statx *unix.Statx_t,
 ) (err error) {
-	id, err := r.prepareStatx(dirfd, path, flags, mask, statx)
+	id, ready, err := r.PrepareStatx(dirfd, path, flags, mask, statx)
 	if err != nil {
 		return err
 	}
+	ready()
 	errno, _ := r.complete(id)
 	// No GC until the request is done.
 	runtime.KeepAlive(statx)
@@ -37,16 +38,19 @@ func (r *Ring) Statx(
 	return nil
 }
 
-func (r *Ring) prepareStatx(
+// PrepareStatx is used to prepare a Statx call and will return the request id
+// (SQE UserData) of the SQE. After calling the returned callback function the
+// ring is safe to be entered.
+func (r *Ring) PrepareStatx(
 	dirfd int,
 	path string,
 	flags int,
 	mask int,
 	statx *unix.Statx_t,
-) (uint64, error) {
+) (uint64, func(), error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, nil, errors.New("ring unavailable")
 	}
 
 	sqe.Opcode = Statx
@@ -63,8 +67,7 @@ func (r *Ring) prepareStatx(
 	reqID := r.ID()
 	sqe.UserData = reqID
 
-	ready()
-	return reqID, nil
+	return reqID, ready, nil
 }
 
 func saferStringToBytes(s *string) []byte {

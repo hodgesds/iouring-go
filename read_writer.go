@@ -85,7 +85,7 @@ findCqe:
 
 // Write implements the io.Writer interface.
 func (i *ringFIO) Write(b []byte) (int, error) {
-	id, ready, err := i.prepareWrite(b, 0)
+	id, ready, err := i.PrepareWrite(b, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -95,7 +95,9 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (i *ringFIO) prepareWrite(b []byte, flags uint8) (uint64, func(), error) {
+// PrepareWrite is used to prepare a Write SQE. The ring is able to be entered
+// after the returned callback is called.
+func (i *ringFIO) PrepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
 		return 0, nil, errors.New("ring unavailable")
@@ -119,10 +121,12 @@ func (i *ringFIO) prepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 	return reqID, ready, nil
 }
 
-func (i *ringFIO) prepareRead(b []byte, flags uint8) (uint64, error) {
+// PrepareRead is used to prepare a Read SQE. The ring is able to be entered
+// after the returned callback is called.
+func (i *ringFIO) PrepareRead(b []byte, flags uint8) (uint64, func(), error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, nil, errors.New("ring unavailable")
 	}
 
 	sqe.Opcode = Read
@@ -140,17 +144,16 @@ func (i *ringFIO) prepareRead(b []byte, flags uint8) (uint64, error) {
 	reqID := i.r.ID()
 	sqe.UserData = reqID
 
-	// Call the callback to signal we are ready to enter the ring.
-	ready()
-	return reqID, nil
+	return reqID, ready, nil
 }
 
 // Read implements the io.Reader interface.
 func (i *ringFIO) Read(b []byte) (int, error) {
-	id, err := i.prepareRead(b, 0)
+	id, ready, err := i.PrepareRead(b, 0)
 	if err != nil {
 		return 0, err
 	}
+	ready()
 	n, err := i.getCqe(id, 1, 1)
 	if err != nil {
 		return 0, err
