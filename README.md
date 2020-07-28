@@ -10,9 +10,7 @@ things that need cleaned up.
 This library is unsafe to use in production. It violates some aspects of the Go
 memory model and comes with no guarantees of not introducing security issues
 and generally crashing your programs. It is an experimental exercise to see
-what is possible with the Go runtime. If some features are added to the Go
-runtime this library could be made safe for general use, or alternatively parts
-could be integrated into the runtime. However, it probably is not a good idea
+what is possible with the Go runtime. However, it probably is not a good idea
 to add `io_uring` to the runtime as it has many configuration options that are
 useful to the end user.
 
