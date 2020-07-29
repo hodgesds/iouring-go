@@ -3,7 +3,10 @@
 package iouring
 
 import (
+	"encoding/binary"
+	"runtime"
 	"syscall"
+	"unsafe"
 
 	"github.com/pkg/errors"
 )
@@ -11,28 +14,32 @@ import (
 // Splice implements splice using a ring.
 func (r *Ring) Splice(
 	inFd int,
-	inOff int64,
+	inOff *int64,
 	outFd int,
-	outOff int64,
+	outOff *int64,
 	n int,
 	flags int,
-) error {
-	id, err := r.prepareSplice(inFd, inOff, outFd, outOff, n, flags)
+) (int64, error) {
+	id, err := r.PrepareSplice(inFd, inOff, outFd, outOff, n, flags)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	errno, _ := r.complete(id)
+	// TODO: replace complete with something more efficient.
+	errno, res := r.complete(id)
 	if errno < 0 {
-		return syscall.Errno(-errno)
+		return 0, syscall.Errno(-errno)
 	}
-	return nil
+	runtime.KeepAlive(inOff)
+	runtime.KeepAlive(outOff)
+	return int64(res), nil
 }
 
-func (r *Ring) prepareSplice(
+// PrepareSplice is used to prepare a SQE for a splice(2).
+func (r *Ring) PrepareSplice(
 	inFd int,
-	inOff int64,
+	inOff *int64,
 	outFd int,
-	outOff int64,
+	outOff *int64,
 	n int,
 	flags int,
 ) (uint64, error) {
@@ -43,16 +50,24 @@ func (r *Ring) prepareSplice(
 
 	sqe.Opcode = Splice
 	sqe.Fd = int32(outFd)
-	sqe.Addr = uint64(inOff)
+	if inOff != nil {
+		sqe.Addr = uint64(uintptr(unsafe.Pointer(&inOff)))
+	} else {
+		sqe.Addr = 0
+	}
 	sqe.Len = uint32(n)
-	sqe.Offset = uint64(outOff)
+	if outOff != nil {
+		sqe.Offset = uint64(uintptr(unsafe.Pointer(&outOff)))
+	} else {
+		sqe.Offset = 0
+	}
 	sqe.UFlags = int32(flags)
 	// BUG: need to convert the inFd to the union member of the SQE
-	//sqe.Anon0 = []byte(inFd)
-
-	reqID := r.ID()
-	sqe.UserData = reqID
+	anon := [24]byte{}
+	binary.LittleEndian.PutUint32(anon[4:], uint32(inFd))
+	sqe.Anon0 = anon
+	sqe.UserData = r.ID()
 
 	ready()
-	return reqID, nil
+	return sqe.UserData, nil
 }

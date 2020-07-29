@@ -4,6 +4,7 @@ package iouring
 
 import (
 	"io/ioutil"
+	"os"
 	"syscall"
 	"testing"
 
@@ -17,8 +18,6 @@ func TestRegisterBuffers(t *testing.T) {
 	vecs := make([]*syscall.Iovec, 10)
 	require.NoError(t, RegisterBuffers(r.Fd(), vecs))
 	require.NoError(t, UnregisterBuffers(r.Fd(), vecs))
-	// require.Error(t, RegisterBuffers(-1, vecs))
-	// require.Error(t, UnregisterBuffers(-1, vecs))
 }
 
 func TestFileRegistry(t *testing.T) {
@@ -29,8 +28,10 @@ func TestFileRegistry(t *testing.T) {
 	reg := NewFileRegistry(r.Fd())
 	f, err := ioutil.TempFile("", "test-file-registry")
 	require.NoError(t, err)
+	defer os.Remove(f.Name())
 	f2, err := ioutil.TempFile("", "test-file-registry")
 	require.NoError(t, err)
+	defer os.Remove(f2.Name())
 
 	require.NoError(t, reg.Register(int(f.Fd())))
 	require.NoError(t, reg.Register(int(f2.Fd())))

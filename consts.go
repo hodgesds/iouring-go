@@ -20,10 +20,9 @@ const (
 
 const (
 
-	/*
-	 * io_uring_params->features flags
-	 */
-	FeatSingleMmap     = (1 << 0)
+	// FeatSingleMmap is used to configure a single mmap'd ring.
+	FeatSingleMmap = (1 << 0)
+	// FeatNoDrop is used to ensure that no CQEs are dropped.
 	FeatNoDrop         = (1 << 1)
 	FeatSubmitStable   = (1 << 2)
 	FeatRwCurPos       = (1 << 3)
@@ -45,7 +44,7 @@ const (
 	SqeFixedFile uint8 = (1 << SqeFixedFileBit)
 	// SqeIoDrain issue after inflight IO
 	SqeIoDrain uint8 = (1 << SqeIoDrainBit)
-	// SqeLink is used to link multiple SQEs.
+	// SqeIoLink is used to link multiple SQEs.
 	SqeIoLink uint8 = (1 << SqeIoLinkBit)
 	// SqeIoHardlink is a hard link to multiple SQEs
 	SqeIoHardlink uint8 = (1 << SqeIoHardlinkBit)
