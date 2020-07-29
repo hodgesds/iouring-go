@@ -71,7 +71,7 @@ func (c *ringConn) rePoll() {
 	sqe, commit := c.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(c.fd)
-	sqe.UFlags = int32(pollin)
+	sqe.UFlags = int32(POLLIN)
 	sqe.UserData = id
 	commit()
 	c.r.Enter(uint(1024), uint(1), EnterGetEvents, nil)
@@ -85,7 +85,6 @@ func (c *ringConn) run() {
 			sqe, commit := c.r.SubmitEntry()
 			sqe.Opcode = PollRemove
 			sqe.Fd = int32(c.fd)
-			sqe.UFlags = int32(pollin)
 			sqe.UserData = id
 			commit()
 			c.getCqe(context.Background(), id)

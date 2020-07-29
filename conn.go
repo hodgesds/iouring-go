@@ -14,7 +14,12 @@ import (
 )
 
 const (
-	pollin = 0x0001
+	POLLIN   = 0x1
+	POLLPRI  = 0x2
+	POLLOUT  = 0x4
+	POLLERR  = 0x8
+	POLLHUP  = 0x10
+	POLLNVAL = 0x20
 
 	// SOReuseport is the socket option to reuse socket port.
 	SOReuseport int = 0x0F
@@ -84,7 +89,7 @@ func (l *ringListener) run() {
 	sqe, commit := l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(fd)
-	sqe.UFlags = int32(pollin)
+	sqe.UFlags = int32(POLLIN)
 	sqe.UserData = id
 	commit()
 
@@ -210,7 +215,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	sqe, commit := l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(rc.fd)
-	sqe.UFlags = int32(pollin)
+	sqe.UFlags = int32(POLLIN)
 	sqe.UserData = newConnInfo.id
 	commit()
 	ready := int32(1)
@@ -221,7 +226,7 @@ func (l *ringListener) onListen(conns map[uint64]*connInfo, cInfo *connInfo) {
 	sqe, commit = l.r.SubmitEntry()
 	sqe.Opcode = PollAdd
 	sqe.Fd = int32(cInfo.fd)
-	sqe.UFlags = int32(pollin)
+	sqe.UFlags = int32(POLLIN)
 	sqe.UserData = uint64(cInfo.fd)
 	commit()
 
@@ -247,6 +252,14 @@ func (l *ringListener) Addr() net.Addr {
 // Accept implements the net.Listener interface.
 func (l *ringListener) Accept() (net.Conn, error) {
 	return <-l.newConn, nil
+}
+
+// Returns the file descriptor of the connection.
+func (l *ringListener) Fd() int {
+	if l.f == nil {
+		return -1
+	}
+	return int(l.f.Fd())
 }
 
 // SockoptListener returns a net.Listener that is Ring based.
