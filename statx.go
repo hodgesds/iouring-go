@@ -20,11 +20,10 @@ func (r *Ring) Statx(
 	mask int,
 	statx *unix.Statx_t,
 ) (err error) {
-	id, ready, err := r.PrepareStatx(dirfd, path, flags, mask, statx)
+	id, err := r.PrepareStatx(dirfd, path, flags, mask, statx)
 	if err != nil {
 		return err
 	}
-	ready()
 	errno, _ := r.complete(id)
 	// No GC until the request is done.
 	runtime.KeepAlive(statx)
@@ -47,10 +46,10 @@ func (r *Ring) PrepareStatx(
 	flags int,
 	mask int,
 	statx *unix.Statx_t,
-) (uint64, func(), error) {
+) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, nil, errors.New("ring unavailable")
+		return 0, errors.New("ring unavailable")
 	}
 
 	sqe.Opcode = Statx
@@ -63,11 +62,10 @@ func (r *Ring) PrepareStatx(
 	sqe.Len = uint32(mask)
 	sqe.Offset = (uint64)(uintptr(unsafe.Pointer(statx)))
 	sqe.UFlags = int32(flags)
+	sqe.UserData = r.ID()
 
-	reqID := r.ID()
-	sqe.UserData = reqID
-
-	return reqID, ready, nil
+	ready()
+	return sqe.UserData, nil
 }
 
 func saferStringToBytes(s *string) []byte {
