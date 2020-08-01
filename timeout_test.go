@@ -18,3 +18,13 @@ func TestPrepareTimeout(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
+
+func TestPrepareTimeoutRemove(t *testing.T) {
+	r, err := New(2048, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	id, err := r.PrepareTimeoutRemove(0, 0)
+	require.NoError(t, err)
+	require.True(t, id > uint64(0))
+}
