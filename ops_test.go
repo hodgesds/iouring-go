@@ -5,6 +5,7 @@ package iouring
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -208,6 +209,48 @@ func BenchmarkNopDeadline(b *testing.B) {
 			},
 		)
 	}
+}
+
+func TestPollAdd(t *testing.T) {
+	t.Skip("FIX ME")
+	r, err := New(
+		2048,
+		nil,
+		WithID(1000000),
+		WithEnterErrHandler(func(err error) { require.NoError(t, err) }),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	data := []byte("foo")
+	buf := make([]byte, len(data))
+	pipeFds := make([]int, 2)
+	require.NoError(t, unix.Pipe2(pipeFds, syscall.O_NONBLOCK))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ready := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		ready <- struct{}{}
+		for i := 0; i < 3; i++ {
+			println("F")
+			syscall.Read(pipeFds[1], buf)
+			ready <- struct{}{}
+			println("y")
+			require.NoError(t, r.PollAdd(pipeFds[1], POLLIN))
+			println("D")
+		}
+		syscall.Close(pipeFds[0])
+	}()
+	for i := 0; i < 3; i++ {
+		<-ready
+		_, err = syscall.Write(pipeFds[0], data)
+		println("W")
+		if err == io.EOF {
+			break
+		}
+	}
+	wg.Wait()
 }
 
 func TestPrepareReadv(t *testing.T) {

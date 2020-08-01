@@ -206,6 +206,34 @@ func (r *Ring) Nop() error {
 	return nil
 }
 
+// PollAdd is used to add a poll to a fd.
+func (r *Ring) PollAdd(fd int, mask int) error {
+	id, err := r.PreparePollAdd(fd, mask)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PreparePollAdd is used to prepare a SQE for adding a poll.
+func (r *Ring) PreparePollAdd(fd int, mask int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+	sqe.Opcode = PollAdd
+	sqe.Fd = int32(fd)
+	sqe.UFlags = int32(mask)
+	sqe.UserData = r.ID()
+
+	ready()
+	return sqe.UserData, nil
+}
+
 // PrepareReadv is used to prepare a readv SQE.
 func (r *Ring) PrepareReadv(
 	fd int,
