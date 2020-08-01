@@ -3,14 +3,14 @@
 package iouring
 
 import (
+	"syscall"
 	"unsafe"
 
 	"github.com/pkg/errors"
-	"golang.org/x/sys/unix"
 )
 
 // PrepareTimeout is used to prepare a timeout SQE.
-func (r *Ring) PrepareTimeout(ts *unix.Timespec, count int, flags int) (uint64, error) {
+func (r *Ring) PrepareTimeout(ts *syscall.Timespec, count int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
