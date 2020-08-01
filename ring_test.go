@@ -33,7 +33,7 @@ func TestNew(t *testing.T) {
 	require.Equal(t, r.cq, r.CQ())
 	require.Equal(t, r.sq, r.SQ())
 
-	require.NoError(t, r.Close())
+	require.NoError(t, r.Stop())
 }
 
 func TestNewRingInvalidSize(t *testing.T) {

@@ -235,8 +235,8 @@ func (r *Ring) CanEnter() bool {
 	return true
 }
 
-// Close is used to close the ring.
-func (r *Ring) Close() error {
+// Stop is used to stop the ring.
+func (r *Ring) Stop() error {
 	if err := r.closeSq(); err != nil {
 		return err
 	}
