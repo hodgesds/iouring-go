@@ -104,21 +104,14 @@ func (i *ringFIO) PrepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 	}
 
 	sqe.Opcode = Write
+	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = flags
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
 
-	return reqID, ready, nil
+	return sqe.UserData, ready, nil
 }
 
 // PrepareRead is used to prepare a Read SQE. The ring is able to be entered
@@ -130,21 +123,14 @@ func (i *ringFIO) PrepareRead(b []byte, flags uint8) (uint64, func(), error) {
 	}
 
 	sqe.Opcode = Read
+	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = flags
 	sqe.Offset = uint64(atomic.LoadInt64(i.fOffset))
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
 
-	return reqID, ready, nil
+	return sqe.UserData, ready, nil
 }
 
 // Read implements the io.Reader interface.
@@ -173,24 +159,16 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	}
 
 	sqe.Opcode = WriteFixed
+	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
 	sqe.Offset = uint64(o)
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
 
-	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	n, err := i.getCqe(reqID, 1, 1)
+	n, err := i.getCqe(sqe.UserData, 1, 1)
 	runtime.KeepAlive(b)
 	return n, err
 }
@@ -203,24 +181,15 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	}
 
 	sqe.Opcode = ReadFixed
+	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
 	sqe.Offset = uint64(o)
-
-	// This is probably a violation of the memory model, but in order for
-	// reads to work we have to pass the address of the read buffer to the
-	// SQE.
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
-	// Use reqId as user data so we can return the request from the
-	// completion queue.
-	reqID := i.r.ID()
-	sqe.UserData = reqID
-
-	// Call the callback to signal we are ready to enter the ring.
 	ready()
 
-	n, err := i.getCqe(reqID, 1, 1)
+	n, err := i.getCqe(sqe.UserData, 1, 1)
 	runtime.KeepAlive(b)
 	if err != nil {
 		return 0, err
