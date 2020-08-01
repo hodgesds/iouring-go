@@ -6,15 +6,6 @@ Go. This library is similar to [liburing](https://github.com/axboe/liburing).
 If you want to contribute feel free to send PRs or emails, there's plenty of
 things that need cleaned up.
 
-# ***SAFETY WARNING***
-This library is unsafe to use in production. It violates some aspects of the Go
-memory model and comes with no guarantees of not introducing security issues
-and generally crashing your programs. It is an experimental exercise to see
-what is possible with the Go runtime. However, it probably is not a good idea
-to add `io_uring` to the runtime as it has many configuration options that are
-useful to the end user.
-
-
 # Interacting with the Submit/Completion Queues
 ## Design
 The library is designed so that if you want to use your own implementation for
