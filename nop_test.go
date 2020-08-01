@@ -3,6 +3,7 @@
 package iouring
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -50,16 +51,45 @@ func BenchmarkNop(b *testing.B) {
 }
 
 func BenchmarkNopDeadline(b *testing.B) {
-	r, err := New(2048, nil, WithDeadline(100*time.Microsecond))
-	require.NoError(b, err)
-	require.NotNil(b, r)
+	tests := []struct {
+		ringSize  uint
+		writeSize int
+		deadline  time.Duration
+	}{
+		{
+			ringSize: 1024,
+			deadline: 1 * time.Millisecond,
+		},
+		{
+			ringSize: 1024,
+			deadline: 100 * time.Microsecond,
+		},
+		{
+			ringSize: 1024,
+			deadline: 10 * time.Microsecond,
+		},
+	}
+	for _, test := range tests {
+		b.Run(
+			fmt.Sprintf("ring-%d-nop-deadline-%v", test.ringSize, test.deadline.String()),
+			func(b *testing.B) {
+				r, err := New(
+					test.ringSize,
+					nil,
+					WithDeadline(test.deadline),
+				)
+				require.NoError(b, err)
+				require.NotNil(b, r)
 
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err = r.Nop()
-		if err != nil {
-			b.Fatal(err)
-		}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					err = r.Nop()
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		)
 	}
 }
