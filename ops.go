@@ -1,0 +1,361 @@
+// +build linux
+
+package iouring
+
+import (
+	"encoding/binary"
+	"runtime"
+	"syscall"
+	"unsafe"
+
+	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
+)
+
+// PrepareAccept is used to prepare a SQE for an accept(2) call.
+func (r *Ring) PrepareAccept(
+	fd int,
+	addr syscall.Sockaddr,
+	socklen uint32,
+	flags int,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Accept
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&addr)))
+	sqe.Offset = uint64(socklen)
+	sqe.UFlags = int32(flags)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareClose is used to prepare a close(2) call.
+func (r *Ring) PrepareClose(fd int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+	sqe.Opcode = Close
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Close is implements close(2).
+func (r *Ring) Close(fd int) error {
+	id, err := r.PrepareClose(fd)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareConnect is used to prepare a SQE for a connect(2) call.
+func (r *Ring) PrepareConnect(
+	fd int,
+	addr syscall.Sockaddr,
+	socklen uint32,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Connect
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&addr)))
+	sqe.Len = socklen
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareFsync is used to prep a nop.
+func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+	sqe.Opcode = Fsync
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.UFlags = int32(flags)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Fsync is a nop.
+func (r *Ring) Fsync(fd int, flags int) error {
+	id, err := r.PrepareFsync(fd, flags)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareNop is used to prep a nop.
+func (r *Ring) PrepareNop() (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+	sqe.Opcode = Nop
+	sqe.UserData = r.ID()
+	sqe.Fd = -1
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Nop is a nop.
+func (r *Ring) Nop() error {
+	id, err := r.PrepareNop()
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareReadv is used to prepare a readv SQE.
+func (r *Ring) PrepareReadv(
+	fd int,
+	iovecs []*syscall.Iovec,
+	offset int,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Readv
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&iovecs[0])))
+	sqe.Len = uint32(len(iovecs))
+	sqe.Offset = uint64(offset)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareRecvmsg is used to prepare a recvmsg SQE.
+func (r *Ring) PrepareRecvmsg(
+	fd int,
+	msg *syscall.Msghdr,
+	flags int,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = RecvMsg
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(msg)))
+	sqe.Len = 1
+	sqe.Offset = 0
+	sqe.UFlags = int32(flags)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Splice implements splice using a ring.
+func (r *Ring) Splice(
+	inFd int,
+	inOff *int64,
+	outFd int,
+	outOff *int64,
+	n int,
+	flags int,
+) (int64, error) {
+	id, err := r.PrepareSplice(inFd, inOff, outFd, outOff, n, flags)
+	if err != nil {
+		return 0, err
+	}
+	// TODO: replace complete with something more efficient.
+	errno, res := r.complete(id)
+	if errno < 0 {
+		return 0, syscall.Errno(-errno)
+	}
+	runtime.KeepAlive(inOff)
+	runtime.KeepAlive(outOff)
+	return int64(res), nil
+}
+
+// PrepareSplice is used to prepare a SQE for a splice(2).
+func (r *Ring) PrepareSplice(
+	inFd int,
+	inOff *int64,
+	outFd int,
+	outOff *int64,
+	n int,
+	flags int,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Splice
+	sqe.Fd = int32(outFd)
+	if inOff != nil {
+		sqe.Addr = uint64(uintptr(unsafe.Pointer(&inOff)))
+	} else {
+		sqe.Addr = 0
+	}
+	sqe.Len = uint32(n)
+	if outOff != nil {
+		sqe.Offset = uint64(uintptr(unsafe.Pointer(&outOff)))
+	} else {
+		sqe.Offset = 0
+	}
+	sqe.UFlags = int32(flags)
+	// BUG: need to convert the inFd to the union member of the SQE
+	anon := [24]byte{}
+	binary.LittleEndian.PutUint32(anon[4:], uint32(inFd))
+	sqe.Anon0 = anon
+	sqe.UserData = r.ID()
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Statx implements statx using a ring.
+func (r *Ring) Statx(
+	dirfd int,
+	path string,
+	flags int,
+	mask int,
+	statx *unix.Statx_t,
+) (err error) {
+	id, err := r.PrepareStatx(dirfd, path, flags, mask, statx)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	// No GC until the request is done.
+	runtime.KeepAlive(statx)
+	runtime.KeepAlive(dirfd)
+	runtime.KeepAlive(path)
+	runtime.KeepAlive(mask)
+	runtime.KeepAlive(flags)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareStatx is used to prepare a Statx call and will return the request id
+// (SQE UserData) of the SQE. After calling the returned callback function the
+// ring is safe to be entered.
+func (r *Ring) PrepareStatx(
+	dirfd int,
+	path string,
+	flags int,
+	mask int,
+	statx *unix.Statx_t,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Statx
+	sqe.Fd = int32(dirfd)
+	if path != "" {
+		// TODO: could probably avoid the conversion to []byte
+		b := saferStringToBytes(&path)
+		sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+	}
+	sqe.Len = uint32(mask)
+	sqe.Offset = (uint64)(uintptr(unsafe.Pointer(statx)))
+	sqe.UFlags = int32(flags)
+	sqe.UserData = r.ID()
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareTimeout is used to prepare a timeout SQE.
+func (r *Ring) PrepareTimeout(ts *syscall.Timespec, count int, flags int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Timeout
+	sqe.UserData = r.ID()
+	sqe.UFlags = int32(flags)
+	sqe.Fd = -1
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(ts)))
+	sqe.Len = 1
+	sqe.Offset = uint64(count)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareTimeoutRemove is used to prepare a timeout removal.
+func (r *Ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = TimeoutRemove
+	sqe.UserData = r.ID()
+	sqe.UFlags = int32(flags)
+	sqe.Fd = -1
+	sqe.Addr = data
+	sqe.Len = 0
+	sqe.Offset = 0
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareWritev is used to prepare a writev SQE.
+func (r *Ring) PrepareWritev(
+	fd int,
+	iovecs []*syscall.Iovec,
+	offset int,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errors.New("ring unavailable")
+	}
+
+	sqe.Opcode = Writev
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&iovecs[0])))
+	sqe.Len = uint32(len(iovecs))
+	sqe.Offset = uint64(offset)
+
+	ready()
+	return sqe.UserData, nil
+}
