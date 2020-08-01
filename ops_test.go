@@ -92,6 +92,23 @@ func TestFadvise(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestFallocate(t *testing.T) {
+	r, err := New(2048, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	f, err := ioutil.TempFile("", "fallocate")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	data := []byte("hello fallocate")
+	_, err = f.Write(data)
+	require.NoError(t, err)
+
+	err = r.Fallocate(int(f.Fd()), unix.FALLOC_FL_KEEP_SIZE, 0, int64(len(data)))
+	require.NoError(t, err)
+}
+
 func TestFsync(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)

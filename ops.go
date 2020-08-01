@@ -119,6 +119,38 @@ func (r *Ring) Fadvise(fd int, offset uint64, n uint32, advise int) error {
 	return nil
 }
 
+// PrepareFallocate is used to prepare a fallocate call.
+func (r *Ring) PrepareFallocate(
+	fd int, mode uint32, offset int64, n int64) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Fallocate
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Addr = uint64(n)
+	sqe.Len = mode
+	sqe.Offset = uint64(offset)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Fallocate implements fallocate.
+func (r *Ring) Fallocate(fd int, mode uint32, offset int64, n int64) error {
+	id, err := r.PrepareFallocate(fd, mode, offset, n)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
 // PrepareFsync is used to prepare a fsync(2) call.
 func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
