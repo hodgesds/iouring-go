@@ -67,8 +67,8 @@ func BenchmarkRingWrite(b *testing.B) {
 				data := make([]byte, test.writeSize)
 
 				b.SetBytes(int64(test.writeSize))
-				b.ResetTimer()
 				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					//data := bufPool.Get().([]byte)
 					_, err = rw.Write(data)
@@ -130,8 +130,8 @@ func BenchmarkFileWrite(b *testing.B) {
 				defer os.Remove(f.Name())
 
 				b.SetBytes(int64(len(data)))
-				b.ResetTimer()
 				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					f.Write(data)
 				}
@@ -190,8 +190,8 @@ func BenchmarkRingDeadlineWrite(b *testing.B) {
 				data := make([]byte, test.writeSize)
 
 				b.SetBytes(int64(test.writeSize))
-				b.ResetTimer()
 				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					_, err = rw.Write(data)
 					if err != nil {
@@ -257,8 +257,8 @@ func BenchmarkRingMultiWrite(b *testing.B) {
 				data := make([]byte, test.writeSize)
 
 				b.SetBytes(int64(test.writeSize * test.multiwrite))
-				b.ResetTimer()
 				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					_, err = w.Write(data)
 					if err != nil {
