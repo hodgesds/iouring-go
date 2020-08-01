@@ -12,6 +12,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var (
+	errRingUnavailable = errors.New("ring unavailable")
+)
+
 // PrepareAccept is used to prepare a SQE for an accept(2) call.
 func (r *Ring) PrepareAccept(
 	fd int,
@@ -21,7 +25,7 @@ func (r *Ring) PrepareAccept(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Accept
@@ -39,7 +43,7 @@ func (r *Ring) PrepareAccept(
 func (r *Ring) PrepareClose(fd int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 	sqe.Opcode = Close
 	sqe.UserData = r.ID()
@@ -70,7 +74,7 @@ func (r *Ring) PrepareConnect(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Connect
@@ -83,11 +87,43 @@ func (r *Ring) PrepareConnect(
 	return sqe.UserData, nil
 }
 
-// PrepareFsync is used to prep a nop.
+// PrepareFadvise is used to prepare a fadvise call.
+func (r *Ring) PrepareFadvise(
+	fd int, offset uint64, n uint32, advise int) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Fadvise
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Len = n
+	sqe.Offset = offset
+	sqe.UFlags = int32(advise)
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Fadvise implements fadvise.
+func (r *Ring) Fadvise(fd int, offset uint64, n uint32, advise int) error {
+	id, err := r.PrepareFadvise(fd, offset, n, advise)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareFsync is used to prepare a fsync(2) call.
 func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 	sqe.Opcode = Fsync
 	sqe.UserData = r.ID()
@@ -98,7 +134,7 @@ func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
 	return sqe.UserData, nil
 }
 
-// Fsync is a nop.
+// Fsync implements fsync(2).
 func (r *Ring) Fsync(fd int, flags int) error {
 	id, err := r.PrepareFsync(fd, flags)
 	if err != nil {
@@ -115,7 +151,7 @@ func (r *Ring) Fsync(fd int, flags int) error {
 func (r *Ring) PrepareNop() (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 	sqe.Opcode = Nop
 	sqe.UserData = r.ID()
@@ -146,7 +182,7 @@ func (r *Ring) PrepareReadv(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Readv
@@ -168,7 +204,7 @@ func (r *Ring) PrepareRecvmsg(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = RecvMsg
@@ -217,7 +253,7 @@ func (r *Ring) PrepareSplice(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Splice
@@ -281,7 +317,7 @@ func (r *Ring) PrepareStatx(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Statx
@@ -301,10 +337,11 @@ func (r *Ring) PrepareStatx(
 }
 
 // PrepareTimeout is used to prepare a timeout SQE.
-func (r *Ring) PrepareTimeout(ts *syscall.Timespec, count int, flags int) (uint64, error) {
+func (r *Ring) PrepareTimeout(
+	ts *syscall.Timespec, count int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Timeout
@@ -323,7 +360,7 @@ func (r *Ring) PrepareTimeout(ts *syscall.Timespec, count int, flags int) (uint6
 func (r *Ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = TimeoutRemove
@@ -346,7 +383,7 @@ func (r *Ring) PrepareWritev(
 ) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = Writev

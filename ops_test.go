@@ -75,6 +75,23 @@ func TestPrepareConnect(t *testing.T) {
 	require.True(t, id > uint64(0))
 }
 
+func TestFadvise(t *testing.T) {
+	r, err := New(2048, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	f, err := ioutil.TempFile("", "fadvise")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	data := []byte("hello fadvise")
+	_, err = f.Write(data)
+	require.NoError(t, err)
+
+	err = r.Fadvise(int(f.Fd()), 0, uint32(len(data)), unix.FADV_NORMAL)
+	require.NoError(t, err)
+}
+
 func TestFsync(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
@@ -149,7 +166,11 @@ func BenchmarkNopDeadline(b *testing.B) {
 	}
 	for _, test := range tests {
 		b.Run(
-			fmt.Sprintf("ring-%d-nop-deadline-%v", test.ringSize, test.deadline.String()),
+			fmt.Sprintf(
+				"ring-%d-nop-deadline-%v",
+				test.ringSize,
+				test.deadline.String(),
+			),
 			func(b *testing.B) {
 				r, err := New(
 					test.ringSize,
