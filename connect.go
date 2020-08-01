@@ -10,7 +10,11 @@ import (
 )
 
 // PrepareConnect is used to prepare a SQE for a connect(2) call.
-func (r *Ring) PrepareConnect(fd int, addr syscall.Sockaddr, socklen uint32) (uint64, error) {
+func (r *Ring) PrepareConnect(
+	fd int,
+	addr syscall.Sockaddr,
+	socklen uint32,
+) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errors.New("ring unavailable")
