@@ -249,9 +249,3 @@ func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 
 	return nil, ErrEntryNotFound
 }
-
-// KernelTimespec is a kernel timespec.
-type KernelTimespec struct {
-	Sec  int64
-	Nsec int64
-}

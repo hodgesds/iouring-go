@@ -205,7 +205,6 @@ func TestRingReadWrap(t *testing.T) {
 }
 
 func TestConcurrentReaders(t *testing.T) {
-	t.Skip("FIX ME")
 	ringSize := uint(8)
 	r, err := New(ringSize, &Params{})
 	require.NoError(t, err)
@@ -244,8 +243,6 @@ func TestConcurrentReaders(t *testing.T) {
 
 	for i := 0; i < int(ringSize+2); i++ {
 		work <- struct{}{}
-	}
-	for i := 0; i < int(ringSize+2); i++ {
 		<-done
 	}
 	close(stop)
