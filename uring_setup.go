@@ -133,6 +133,7 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 	cq.Tail = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Tail))))
 	cq.Mask = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.RingMask))))
 	cq.Overflow = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Overflow))))
+	cq.Flags = (*uint32)(unsafe.Pointer(uintptr(uint(cqPtr) + uint(p.CqOffset.Flags))))
 
 	// BUG: don't use composite literals
 	cq.Entries = *(*[]CompletionEntry)(unsafe.Pointer(&reflect.SliceHeader{

@@ -62,6 +62,7 @@ type CQRingOffset struct {
 	Entries  uint32
 	Overflow uint32
 	Cqes     uint32
+	Flags    uint32
 	Resv     [2]uint64
 }
 
@@ -177,14 +178,20 @@ type CompletionQueue struct {
 	Tail     *uint32
 	Mask     *uint32
 	Overflow *uint32
+	Flags    *uint32
 
 	// Entries must never be resized, it is mmap'd.
 	Entries []CompletionEntry
 	ptr     uintptr
 }
 
-// EntryBy returns a CompletionEntry by comparing the user data, this
-// should be called after the ring has been entered.
+// Advance is used to advance the completion queue by a count.
+func (c *CompletionQueue) Advance(count int) {
+	atomic.AddUint32(c.Head, uint32(count))
+}
+
+// EntryBy (DEPRECATED) returns a CompletionEntry by comparing the user data,
+// this should be called after the ring has been entered.
 func (c *CompletionQueue) EntryBy(userData uint64) (*CompletionEntry, error) {
 	head := atomic.LoadUint32(c.Head)
 	tail := atomic.LoadUint32(c.Tail)
