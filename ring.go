@@ -3,7 +3,6 @@
 package iouring
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"sync"
@@ -393,12 +392,6 @@ getNext:
 		}
 		atomic.AddUint32(r.sq.writes, 1)
 
-		// The callback that is returned is used to update the
-		// state of the ring and decrement the active writes
-		// counter.
-		if r.debug {
-			fmt.Printf("sq array:%+v\n", r.sq.Array[:9])
-		}
 		r.sq.Entries[tail&mask].Reset()
 		return &r.sq.Entries[tail&mask], func() {
 			r.sq.completeWrite()
