@@ -58,17 +58,17 @@ const (
 	 */
 
 	// SetupIOPoll io_context is polled
-	SetupIOPoll uint = (1 << 0)
+	SetupIOPoll uint32 = (1 << 0)
 	// SetupSQPoll SQ poll thread
-	SetupSQPoll uint = (1 << 1)
+	SetupSQPoll uint32 = (1 << 1)
 	// SetupSQAFF sq_thread_cpu is valid
-	SetupSQAFF uint = (1 << 2)
+	SetupSQAFF uint32 = (1 << 2)
 	// SetupCqSize app defines CQ size
-	SetupCqSize uint = (1 << 3)
+	SetupCqSize uint32 = (1 << 3)
 	// SetupClamp clamp SQ/CQ ring sizes
-	SetupClamp uint = (1 << 4)
+	SetupClamp uint32 = (1 << 4)
 	// SetupAttachWq  attach to existing wq
-	SetupAttachWq uint = (1 << 5)
+	SetupAttachWq uint32 = (1 << 5)
 )
 
 const (
@@ -132,6 +132,7 @@ const (
 
 	// SqNeedWakeup needs io_uring_enter wakeup
 	SqNeedWakeup uint32 = (1 << 0)
+	SqCqOverflow uint32 = (1 << 1)
 
 	/*
 	 * io_uring_enter(2) flags
