@@ -435,6 +435,56 @@ func (r *Ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
 	return sqe.UserData, nil
 }
 
+// PrepareRead is used to prepare a Read SQE. The ring is able to be entered
+// after the returned callback is called.
+func (r *Ring) PrepareRead(
+	fd int,
+	b []byte,
+	offset uint64,
+	flags uint8,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Read
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Len = uint32(len(b))
+	sqe.Flags = flags
+	sqe.Offset = offset
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// PrepareWrite is used to prepare a Write SQE. The ring is able to be entered
+// after the returned callback is called.
+func (r *Ring) PrepareWrite(
+	fd int,
+	b []byte,
+	offset uint64,
+	flags uint8,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Write
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Len = uint32(len(b))
+	sqe.Flags = flags
+	sqe.Offset = offset
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
+	ready()
+	return sqe.UserData, nil
+}
+
 // PrepareWritev is used to prepare a writev SQE.
 func (r *Ring) PrepareWritev(
 	fd int,
