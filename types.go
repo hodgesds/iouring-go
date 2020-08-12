@@ -20,12 +20,21 @@ var (
 	// ErrEntryNotFound is returned when a CQE is not found.
 	ErrEntryNotFound = errors.New("Completion entry not found")
 
+	errCQEMissing = errors.New("cqe missing")
+
 	cqePool = sync.Pool{
 		New: func() interface{} {
 			return &CompletionEntry{}
 		},
 	}
 )
+
+type completionRequest struct {
+	id    uint64
+	res   int32
+	flags uint32
+	done  chan struct{}
+}
 
 // Params are used to configured a io uring.
 type Params struct {

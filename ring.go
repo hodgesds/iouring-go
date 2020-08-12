@@ -15,13 +15,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type completionRequest struct {
-	id    uint64
-	res   int32
-	flags uint32
-	done  chan struct{}
-}
-
 // Ring contains an io_uring submit and completion ring.
 type Ring struct {
 	fd              int
@@ -229,10 +222,62 @@ func (r *Ring) onEntry(inflight map[uint64]*completionRequest, count int) {
 	atomic.StoreUint32(r.cq.Head, head+seenIdx)
 }
 
+// getCqe is used for getting a CQE result.
+func (r *Ring) getCqe(reqID uint64) (int32, uint32, error) {
+	cq := r.cq
+findCqe:
+
+	head := atomic.LoadUint32(cq.Head)
+	tail := atomic.LoadUint32(cq.Tail)
+	mask := atomic.LoadUint32(cq.Mask)
+	end := int(tail & mask)
+
+	for x := int(head & mask); x < len(cq.Entries); x++ {
+		cqe := cq.Entries[x]
+		if cqe.UserData == reqID {
+			if cqe.Res < 0 {
+				return 0, 0, syscall.Errno(-cqe.Res)
+			}
+			return cqe.Res, cqe.Flags, nil
+		}
+		if x == end {
+			goto findCqe
+			return 0, 0, errCQEMissing
+		}
+	}
+	tail = atomic.LoadUint32(cq.Tail)
+	mask = atomic.LoadUint32(cq.Mask)
+	end = int(tail & mask)
+	for x := 0; x < end; x++ {
+		cqe := cq.Entries[x]
+		if cqe.UserData == reqID {
+			if cqe.Res < 0 {
+				return 0, 0, syscall.Errno(-cqe.Res)
+			}
+			return cqe.Res, cqe.Flags, nil
+		}
+		if x == end {
+			goto findCqe
+			return 0, 0, errCQEMissing
+		}
+	}
+	return 0, 0, errCQEMissing
+}
+
 // CanEnter returns whether or not the ring can be entered.
 func (r *Ring) CanEnter() bool {
 	// TODO: figure out this
 	return true
+}
+
+// ShouldFlush returns if the ring should flush due to cq being overflown.
+func (r *Ring) ShouldFlush() bool {
+	return atomic.LoadUint32(r.sq.Flags)&SqCqOverflow != 0
+}
+
+// NeedsEnter returns if the ring needs to be entered.
+func (r *Ring) NeedsEnter() bool {
+	return atomic.LoadUint32(r.sq.Flags)&SqNeedWakeup != 0
 }
 
 // Stop is used to stop the ring.
