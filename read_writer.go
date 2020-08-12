@@ -100,7 +100,7 @@ func (i *ringFIO) Write(b []byte) (int, error) {
 func (i *ringFIO) PrepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, nil, errors.New("ring unavailable")
+		return 0, nil, errRingUnavailable
 	}
 
 	sqe.Opcode = Write
@@ -119,7 +119,7 @@ func (i *ringFIO) PrepareWrite(b []byte, flags uint8) (uint64, func(), error) {
 func (i *ringFIO) PrepareRead(b []byte, flags uint8) (uint64, func(), error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, nil, errors.New("ring unavailable")
+		return 0, nil, errRingUnavailable
 	}
 
 	sqe.Opcode = Read
@@ -155,7 +155,7 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = WriteFixed
@@ -177,7 +177,7 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 	sqe, ready := i.r.SubmitEntry()
 	if sqe == nil {
-		return 0, errors.New("ring unavailable")
+		return 0, errRingUnavailable
 	}
 
 	sqe.Opcode = ReadFixed
