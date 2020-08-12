@@ -9,20 +9,32 @@ import (
 	"github.com/hodgesds/iouring-go"
 )
 
-var port int
+var (
+	port  int
+	debug bool
+)
 
 func init() {
 	flag.IntVar(&port, "port", 9999, "HTTP port")
+	flag.BoolVar(&debug, "debug", false, "debug mode")
 }
 
 func main() {
 	flag.Parse()
+	ops := []iouring.RingOption{
+		iouring.WithEnterErrHandler(func(err error) {
+			log.Println(err)
+		}),
+	}
+	if debug {
+		ops = append(ops, iouring.WithDebug())
+	}
 	r, err := iouring.New(
 		8192,
 		&iouring.Params{
 			Features: iouring.FeatNoDrop,
 		},
-		iouring.WithID(100000),
+		ops...,
 	)
 	if err != nil {
 		log.Fatal(err)
