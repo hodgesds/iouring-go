@@ -400,6 +400,8 @@ func BenchmarkStatxRing(b *testing.B) {
 	require.NoError(b, err)
 	defer d.Close()
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err = r.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
 		if err != nil {
