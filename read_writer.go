@@ -202,8 +202,15 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 
 // Close implements the io.Closer interface.
 func (i *ringFIO) Close() error {
-	i.c.stop()
-	return i.f.Close()
+	id, err := i.r.PrepareClose(int(i.fd))
+	if err != nil {
+		return err
+	}
+	_, err = i.getCqe(id, 1, 1)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Seek implements the io.Seeker interface.
