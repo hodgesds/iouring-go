@@ -4,7 +4,10 @@
 **WORK IN PROGRESS** This library adds support for [`io_uring`](https://kernel.dk/io_uring.pdf) for
 Go. This library is similar to [liburing](https://github.com/axboe/liburing).
 If you want to contribute feel free to send PRs or emails, there's plenty of
-things that need cleaned up.
+things that need cleaned up. Also, check out [@dshylyak](https://github.com/dshulyak)'s 
+[uring](https://github.com/dshulyak/uring) library as well for a similar approach.
+Ideally, these approaches would be added to the Go runtime for optimal efficiency,
+so these libraries are more of a POC, see [here](https://github.com/dshulyak/uring/issues/1).
 
 # Interacting with the Submit/Completion Queues
 ## Design
