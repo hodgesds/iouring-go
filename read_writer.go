@@ -141,13 +141,13 @@ func (i *ringFIO) Read(b []byte) (int, error) {
 	}
 	ready()
 	n, err := i.getCqe(id, 1, 1)
+	runtime.KeepAlive(b)
 	if err != nil {
 		return 0, err
 	}
 	if n == 0 {
 		return n, io.EOF
 	}
-	runtime.KeepAlive(b)
 	return n, nil
 }
 
@@ -158,7 +158,7 @@ func (i *ringFIO) WriteAt(b []byte, o int64) (int, error) {
 		return 0, errRingUnavailable
 	}
 
-	sqe.Opcode = WriteFixed
+	sqe.Opcode = Write
 	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
@@ -180,13 +180,14 @@ func (i *ringFIO) ReadAt(b []byte, o int64) (int, error) {
 		return 0, errRingUnavailable
 	}
 
-	sqe.Opcode = ReadFixed
+	sqe.Opcode = Read
 	sqe.UserData = i.r.ID()
 	sqe.Fd = i.fd
 	sqe.Len = uint32(len(b))
 	sqe.Flags = 0
 	sqe.Offset = uint64(o)
 	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
 	ready()
 
 	n, err := i.getCqe(sqe.UserData, 1, 1)
