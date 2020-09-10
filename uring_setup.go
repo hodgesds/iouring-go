@@ -91,9 +91,8 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 		uintptr(fd),
 		uintptr(SqeRingOffset),
 	)
-	if errno != 0 {
-		err = errno
-		return errors.Wrap(err, "failed to mmap sq ring")
+	if errno < 0 {
+		return syscall.Errno(-errno)
 	}
 
 	// Making mmap'd slices is annoying.
@@ -123,9 +122,8 @@ func MmapRing(fd int, p *Params, sq *SubmitQueue, cq *CompletionQueue) error {
 			uintptr(fd),
 			uintptr(CqRingOffset),
 		)
-		if errno != 0 {
-			err = errno
-			return errors.Wrap(err, "failed to mmap cq ring")
+		if errno < 0 {
+			return syscall.Errno(-errno)
 		}
 	}
 
