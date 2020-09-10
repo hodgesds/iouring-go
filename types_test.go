@@ -71,7 +71,6 @@ func TestRingFileReadWriterSeek(t *testing.T) {
 }
 
 func TestRingFileReadWriterReadAt(t *testing.T) {
-	t.Skip("TODO: FIX ME!!!!")
 	r, err := New(1024, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
@@ -95,7 +94,6 @@ func TestRingFileReadWriterReadAt(t *testing.T) {
 }
 
 func TestRingFileReadWriterWriteAt(t *testing.T) {
-	t.Skip("TODO: FIX ME!!!!")
 	r, err := New(1024, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
