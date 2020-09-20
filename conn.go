@@ -69,7 +69,7 @@ func (a *addr) String() string {
 
 type ringListener struct {
 	debug      bool
-	r          *Ring
+	r          *ring
 	f          *os.File
 	a          *addr
 	stop       chan struct{}
@@ -263,7 +263,7 @@ func (l *ringListener) Fd() int {
 }
 
 // SockoptListener returns a net.Listener that is Ring based.
-func (r *Ring) SockoptListener(network, address string, errHandler func(error), sockopts ...int) (net.Listener, error) {
+func (r *ring) SockoptListener(network, address string, errHandler func(error), sockopts ...int) (net.Listener, error) {
 	var (
 		err      error
 		fd       int

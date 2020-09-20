@@ -21,7 +21,8 @@ type ReadWriteAtCloser interface {
 
 // ringFIO is used for handling file IO.
 type ringFIO struct {
-	r       *Ring
+	r       *ring
+	shards  []*ring
 	f       *os.File
 	fd      int32
 	fOffset *int64
@@ -85,14 +86,22 @@ findCqe:
 
 // Write implements the io.Writer interface.
 func (i *ringFIO) Write(b []byte) (int, error) {
-	id, ready, err := i.PrepareWrite(b, 0)
+	id, err := i.r.PrepareWrite(int(i.fd), b, uint64(atomic.LoadInt64(i.fOffset)), 0)
 	if err != nil {
 		return 0, err
 	}
-	ready()
-	n, err := i.getCqe(id, 1, 1)
-	runtime.KeepAlive(b)
-	return n, err
+	return i.getCqe(id, 1, 1)
+
+	/*
+		id, ready, err := i.PrepareWrite(b, 0)
+		if err != nil {
+			return 0, err
+		}
+		ready()
+		n, err := i.getCqe(id, 1, 1)
+		runtime.KeepAlive(b)
+		return n, err
+	*/
 }
 
 // PrepareWrite is used to prepare a Write SQE. The ring is able to be entered

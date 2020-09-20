@@ -272,7 +272,17 @@ func TestReadWriterEOF(t *testing.T) {
 
 	buf := make([]byte, 4096)
 	_, err = rw.Read(buf)
+	_, err = rw.Read(buf)
 	require.Error(t, err)
 	f.Close()
 	os.Remove(f.Name())
+}
+
+func BenchmarkReset(b *testing.B) {
+	e := SubmitEntry{}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.Reset()
+	}
 }

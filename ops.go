@@ -17,7 +17,7 @@ var (
 )
 
 // PrepareAccept is used to prepare a SQE for an accept(2) call.
-func (r *Ring) PrepareAccept(
+func (r *ring) PrepareAccept(
 	fd int,
 	addr syscall.Sockaddr,
 	socklen uint32,
@@ -40,7 +40,7 @@ func (r *Ring) PrepareAccept(
 }
 
 // PrepareClose is used to prepare a close(2) call.
-func (r *Ring) PrepareClose(fd int) (uint64, error) {
+func (r *ring) PrepareClose(fd int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errRingUnavailable
@@ -54,7 +54,7 @@ func (r *Ring) PrepareClose(fd int) (uint64, error) {
 }
 
 // Close is implements close(2).
-func (r *Ring) Close(fd int) error {
+func (r *ring) Close(fd int) error {
 	id, err := r.PrepareClose(fd)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func (r *Ring) Close(fd int) error {
 }
 
 // PrepareConnect is used to prepare a SQE for a connect(2) call.
-func (r *Ring) PrepareConnect(
+func (r *ring) PrepareConnect(
 	fd int,
 	addr syscall.Sockaddr,
 	socklen uint32,
@@ -88,7 +88,7 @@ func (r *Ring) PrepareConnect(
 }
 
 // PrepareFadvise is used to prepare a fadvise call.
-func (r *Ring) PrepareFadvise(
+func (r *ring) PrepareFadvise(
 	fd int, offset uint64, n uint32, advise int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
@@ -107,7 +107,7 @@ func (r *Ring) PrepareFadvise(
 }
 
 // Fadvise implements fadvise.
-func (r *Ring) Fadvise(fd int, offset uint64, n uint32, advise int) error {
+func (r *ring) Fadvise(fd int, offset uint64, n uint32, advise int) error {
 	id, err := r.PrepareFadvise(fd, offset, n, advise)
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func (r *Ring) Fadvise(fd int, offset uint64, n uint32, advise int) error {
 }
 
 // PrepareFallocate is used to prepare a fallocate call.
-func (r *Ring) PrepareFallocate(
+func (r *ring) PrepareFallocate(
 	fd int, mode uint32, offset int64, n int64) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
@@ -139,7 +139,7 @@ func (r *Ring) PrepareFallocate(
 }
 
 // Fallocate implements fallocate.
-func (r *Ring) Fallocate(fd int, mode uint32, offset int64, n int64) error {
+func (r *ring) Fallocate(fd int, mode uint32, offset int64, n int64) error {
 	id, err := r.PrepareFallocate(fd, mode, offset, n)
 	if err != nil {
 		return err
@@ -152,7 +152,7 @@ func (r *Ring) Fallocate(fd int, mode uint32, offset int64, n int64) error {
 }
 
 // PrepareFsync is used to prepare a fsync(2) call.
-func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
+func (r *ring) PrepareFsync(fd int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errRingUnavailable
@@ -167,7 +167,7 @@ func (r *Ring) PrepareFsync(fd int, flags int) (uint64, error) {
 }
 
 // Fsync implements fsync(2).
-func (r *Ring) Fsync(fd int, flags int) error {
+func (r *ring) Fsync(fd int, flags int) error {
 	id, err := r.PrepareFsync(fd, flags)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (r *Ring) Fsync(fd int, flags int) error {
 }
 
 // PrepareNop is used to prep a nop.
-func (r *Ring) PrepareNop() (uint64, error) {
+func (r *ring) PrepareNop() (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errRingUnavailable
@@ -194,7 +194,7 @@ func (r *Ring) PrepareNop() (uint64, error) {
 }
 
 // Nop is a nop.
-func (r *Ring) Nop() error {
+func (r *ring) Nop() error {
 	id, err := r.PrepareNop()
 	if err != nil {
 		return err
@@ -207,7 +207,7 @@ func (r *Ring) Nop() error {
 }
 
 // PollAdd is used to add a poll to a fd.
-func (r *Ring) PollAdd(fd int, mask int) error {
+func (r *ring) PollAdd(fd int, mask int) error {
 	id, err := r.PreparePollAdd(fd, mask)
 	if err != nil {
 		return err
@@ -220,7 +220,7 @@ func (r *Ring) PollAdd(fd int, mask int) error {
 }
 
 // PreparePollAdd is used to prepare a SQE for adding a poll.
-func (r *Ring) PreparePollAdd(fd int, mask int) (uint64, error) {
+func (r *ring) PreparePollAdd(fd int, mask int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errRingUnavailable
@@ -235,7 +235,7 @@ func (r *Ring) PreparePollAdd(fd int, mask int) (uint64, error) {
 }
 
 // PrepareReadv is used to prepare a readv SQE.
-func (r *Ring) PrepareReadv(
+func (r *ring) PrepareReadv(
 	fd int,
 	iovecs []*syscall.Iovec,
 	offset int,
@@ -257,7 +257,7 @@ func (r *Ring) PrepareReadv(
 }
 
 // PrepareRecvmsg is used to prepare a recvmsg SQE.
-func (r *Ring) PrepareRecvmsg(
+func (r *ring) PrepareRecvmsg(
 	fd int,
 	msg *syscall.Msghdr,
 	flags int,
@@ -280,7 +280,7 @@ func (r *Ring) PrepareRecvmsg(
 }
 
 // Splice implements splice using a ring.
-func (r *Ring) Splice(
+func (r *ring) Splice(
 	inFd int,
 	inOff *int64,
 	outFd int,
@@ -303,7 +303,7 @@ func (r *Ring) Splice(
 }
 
 // PrepareSplice is used to prepare a SQE for a splice(2).
-func (r *Ring) PrepareSplice(
+func (r *ring) PrepareSplice(
 	inFd int,
 	inOff *int64,
 	outFd int,
@@ -341,7 +341,7 @@ func (r *Ring) PrepareSplice(
 }
 
 // Statx implements statx using a ring.
-func (r *Ring) Statx(
+func (r *ring) Statx(
 	dirfd int,
 	path string,
 	flags int,
@@ -368,7 +368,7 @@ func (r *Ring) Statx(
 // PrepareStatx is used to prepare a Statx call and will return the request id
 // (SQE UserData) of the SQE. After calling the returned callback function the
 // ring is safe to be entered.
-func (r *Ring) PrepareStatx(
+func (r *ring) PrepareStatx(
 	dirfd int,
 	path string,
 	flags int,
@@ -397,7 +397,7 @@ func (r *Ring) PrepareStatx(
 }
 
 // PrepareTimeout is used to prepare a timeout SQE.
-func (r *Ring) PrepareTimeout(
+func (r *ring) PrepareTimeout(
 	ts *syscall.Timespec, count int, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
@@ -417,7 +417,7 @@ func (r *Ring) PrepareTimeout(
 }
 
 // PrepareTimeoutRemove is used to prepare a timeout removal.
-func (r *Ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
+func (r *ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
 	sqe, ready := r.SubmitEntry()
 	if sqe == nil {
 		return 0, errRingUnavailable
@@ -436,7 +436,7 @@ func (r *Ring) PrepareTimeoutRemove(data uint64, flags int) (uint64, error) {
 }
 
 // PrepareRead is used to prepare a read SQE.
-func (r *Ring) PrepareRead(
+func (r *ring) PrepareRead(
 	fd int,
 	b []byte,
 	offset uint64,
@@ -460,7 +460,7 @@ func (r *Ring) PrepareRead(
 }
 
 // PrepareReadFixed is used to prepare a fixed read SQE.
-func (r *Ring) PrepareReadFixed(
+func (r *ring) PrepareReadFixed(
 	fd int,
 	b []byte,
 	flags uint8,
@@ -482,7 +482,7 @@ func (r *Ring) PrepareReadFixed(
 }
 
 // PrepareWrite is used to prepare a Write SQE.
-func (r *Ring) PrepareWrite(
+func (r *ring) PrepareWrite(
 	fd int,
 	b []byte,
 	offset uint64,
@@ -506,7 +506,7 @@ func (r *Ring) PrepareWrite(
 }
 
 // PrepareWriteFixed is used to prepare a fixed write SQE.
-func (r *Ring) PrepareWriteFixed(
+func (r *ring) PrepareWriteFixed(
 	fd int,
 	b []byte,
 	flags uint8,
@@ -528,7 +528,7 @@ func (r *Ring) PrepareWriteFixed(
 }
 
 // PrepareWritev is used to prepare a writev SQE.
-func (r *Ring) PrepareWritev(
+func (r *ring) PrepareWritev(
 	fd int,
 	iovecs []*syscall.Iovec,
 	offset int,

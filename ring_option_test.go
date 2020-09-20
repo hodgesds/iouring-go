@@ -12,7 +12,6 @@ func TestWithDebug(t *testing.T) {
 	r, err := New(2048, nil, WithDebug())
 	require.NoError(t, err)
 	require.NotNil(t, r)
-	require.True(t, r.debug)
 }
 
 func TestWithFileRegistry(t *testing.T) {

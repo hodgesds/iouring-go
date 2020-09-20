@@ -10,13 +10,13 @@ type submitter interface {
 }
 
 type ringSubmitter struct {
-	r        *Ring
+	r        *ring
 	done     chan struct{}
 	work     chan struct{}
 	deadline time.Duration
 }
 
-func newRingSubmitter(r *Ring, deadline time.Duration) *ringSubmitter {
+func newRingSubmitter(r *ring, deadline time.Duration) *ringSubmitter {
 	return &ringSubmitter{
 		r:        r,
 		done:     make(chan struct{}),

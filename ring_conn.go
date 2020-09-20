@@ -19,7 +19,7 @@ type ringConn struct {
 	fd        int
 	laddr     *addr
 	raddr     *addr
-	r         *Ring
+	r         *ring
 	offset    *int64
 	stop      chan struct{}
 	poll      chan uint64

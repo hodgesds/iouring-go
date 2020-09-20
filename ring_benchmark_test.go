@@ -141,6 +141,7 @@ func BenchmarkFileWrite(b *testing.B) {
 }
 
 func BenchmarkRingDeadlineWrite(b *testing.B) {
+	b.Skip()
 	tests := []struct {
 		ringSize  uint
 		writeSize int
@@ -176,6 +177,7 @@ func BenchmarkRingDeadlineWrite(b *testing.B) {
 		b.Run(
 			fmt.Sprintf("ring-%d-deadline-%v-%d", test.ringSize, test.deadline.String(), test.writeSize),
 			func(b *testing.B) {
+				b.Skip()
 				r, err := New(test.ringSize, &Params{Features: FeatNoDrop}, WithDeadline(test.deadline))
 				require.NoError(b, err)
 				require.NotNil(b, r)

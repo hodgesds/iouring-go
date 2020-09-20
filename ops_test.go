@@ -22,6 +22,7 @@ func TestPrepareAccept(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	fd, err := syscall.Socket(
 		syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
@@ -31,7 +32,7 @@ func TestPrepareAccept(t *testing.T) {
 		Port: 80,
 	}
 	copy(addr.Addr[:], net.ParseIP("8.8.8.8"))
-	id, err := r.PrepareAccept(
+	id, err := rr.PrepareAccept(
 		fd,
 		addr,
 		syscall.SizeofSockaddrInet4,
@@ -45,12 +46,13 @@ func TestClose(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	f, err := ioutil.TempFile("", "fsync")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	err = r.Close(int(f.Fd()))
+	err = rr.Close(int(f.Fd()))
 	require.NoError(t, err)
 }
 
@@ -58,6 +60,7 @@ func TestPrepareConnect(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	fd, err := syscall.Socket(
 		syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
@@ -67,7 +70,7 @@ func TestPrepareConnect(t *testing.T) {
 		Port: 80,
 	}
 	copy(addr.Addr[:], net.ParseIP("8.8.8.8"))
-	id, err := r.PrepareConnect(
+	id, err := rr.PrepareConnect(
 		fd,
 		addr,
 		syscall.SizeofSockaddrInet4,
@@ -80,6 +83,7 @@ func TestFadvise(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	f, err := ioutil.TempFile("", "fadvise")
 	require.NoError(t, err)
@@ -89,7 +93,7 @@ func TestFadvise(t *testing.T) {
 	_, err = f.Write(data)
 	require.NoError(t, err)
 
-	err = r.Fadvise(int(f.Fd()), 0, uint32(len(data)), unix.FADV_NORMAL)
+	err = rr.Fadvise(int(f.Fd()), 0, uint32(len(data)), unix.FADV_NORMAL)
 	require.NoError(t, err)
 }
 
@@ -97,6 +101,7 @@ func TestFallocate(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	f, err := ioutil.TempFile("", "fallocate")
 	require.NoError(t, err)
@@ -106,7 +111,7 @@ func TestFallocate(t *testing.T) {
 	_, err = f.Write(data)
 	require.NoError(t, err)
 
-	err = r.Fallocate(int(f.Fd()), unix.FALLOC_FL_KEEP_SIZE, 0, int64(len(data)))
+	err = rr.Fallocate(int(f.Fd()), unix.FALLOC_FL_KEEP_SIZE, 0, int64(len(data)))
 	require.NoError(t, err)
 }
 
@@ -114,12 +119,13 @@ func TestFsync(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	f, err := ioutil.TempFile("", "fsync")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	err = r.Fsync(int(f.Fd()), 0)
+	err = rr.Fsync(int(f.Fd()), 0)
 	require.NoError(t, err)
 }
 
@@ -127,8 +133,9 @@ func TestPrepareNop(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
-	id, err := r.PrepareNop()
+	id, err := rr.PrepareNop()
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
@@ -137,11 +144,12 @@ func BenchmarkPrepareNop(b *testing.B) {
 	r, err := New(2048, nil)
 	require.NoError(b, err)
 	require.NotNil(b, r)
+	rr := r.(*ring)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err = r.PrepareNop()
+		_, err = rr.PrepareNop()
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -152,11 +160,12 @@ func BenchmarkNop(b *testing.B) {
 	r, err := New(2048, nil)
 	require.NoError(b, err)
 	require.NotNil(b, r)
+	rr := r.(*ring)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = r.Nop()
+		err = rr.Nop()
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -164,6 +173,7 @@ func BenchmarkNop(b *testing.B) {
 }
 
 func BenchmarkNopDeadline(b *testing.B) {
+	b.Skip()
 	tests := []struct {
 		ringSize  uint
 		writeSize int
@@ -197,11 +207,12 @@ func BenchmarkNopDeadline(b *testing.B) {
 				)
 				require.NoError(b, err)
 				require.NotNil(b, r)
+				rr := r.(*ring)
 
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					err = r.Nop()
+					err = rr.Nop()
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -221,6 +232,7 @@ func TestPollAdd(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	data := []byte("foo")
 	buf := make([]byte, len(data))
@@ -233,19 +245,15 @@ func TestPollAdd(t *testing.T) {
 		defer wg.Done()
 		ready <- struct{}{}
 		for i := 0; i < 3; i++ {
-			println("F")
 			syscall.Read(pipeFds[1], buf)
 			ready <- struct{}{}
-			println("y")
-			require.NoError(t, r.PollAdd(pipeFds[1], POLLIN))
-			println("D")
+			require.NoError(t, rr.PollAdd(pipeFds[1], POLLIN))
 		}
 		syscall.Close(pipeFds[0])
 	}()
 	for i := 0; i < 3; i++ {
 		<-ready
 		_, err = syscall.Write(pipeFds[0], data)
-		println("W")
 		if err == io.EOF {
 			break
 		}
@@ -257,6 +265,7 @@ func TestPrepareReadv(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	data := []byte("testing...1,2,3")
 	f, err := ioutil.TempFile("", "example")
@@ -269,7 +278,7 @@ func TestPrepareReadv(t *testing.T) {
 	require.NoError(t, err)
 
 	v := make([]*syscall.Iovec, 1)
-	id, err := r.PrepareReadv(int(f.Fd()), v, 0)
+	id, err := rr.PrepareReadv(int(f.Fd()), v, 0)
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
@@ -314,6 +323,7 @@ func TestRingSplice(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	out, err := ioutil.TempFile("", "out")
 	require.NoError(t, err)
@@ -333,7 +343,7 @@ func TestRingSplice(t *testing.T) {
 	go func() {
 		<-wrote
 		defer wg.Done()
-		c, err := r.Splice(
+		c, err := rr.Splice(
 			pipeFds[0], nil,
 			int(out.Fd()), nil,
 			32,
@@ -353,6 +363,7 @@ func TestRingStatx(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	path, err := os.Getwd()
 	require.NoError(t, err)
@@ -372,7 +383,7 @@ func TestRingStatx(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 
-	err = r.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
+	err = rr.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
 	require.NoError(t, err)
 
 	err = unix.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x2)
@@ -384,6 +395,7 @@ func BenchmarkStatxRing(b *testing.B) {
 	r, err := New(2048, nil)
 	require.NoError(b, err)
 	require.NotNil(b, r)
+	rr := r.(*ring)
 
 	path, err := os.Getwd()
 	require.NoError(b, err)
@@ -403,7 +415,7 @@ func BenchmarkStatxRing(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = r.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
+		err = rr.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x1)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -414,8 +426,9 @@ func TestPrepareTimeout(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
-	id, err := r.PrepareTimeout(&syscall.Timespec{Sec: 1}, 1, 0)
+	id, err := rr.PrepareTimeout(&syscall.Timespec{Sec: 1}, 1, 0)
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
@@ -424,8 +437,9 @@ func TestPrepareTimeoutRemove(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
-	id, err := r.PrepareTimeoutRemove(0, 0)
+	id, err := rr.PrepareTimeoutRemove(0, 0)
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
@@ -434,6 +448,7 @@ func TestPrepareWritev(t *testing.T) {
 	r, err := New(2048, nil)
 	require.NoError(t, err)
 	require.NotNil(t, r)
+	rr := r.(*ring)
 
 	f, err := ioutil.TempFile("", "example")
 	require.NoError(t, err)
@@ -445,7 +460,7 @@ func TestPrepareWritev(t *testing.T) {
 	}
 	v.SetLen(1)
 	iovs := []*syscall.Iovec{v}
-	id, err := r.PrepareReadv(int(f.Fd()), iovs, 0)
+	id, err := rr.PrepareWritev(int(f.Fd()), iovs, 0)
 	require.NoError(t, err)
 	require.True(t, id > uint64(0))
 }
