@@ -3,10 +3,11 @@
 package iouring
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"math/rand"
 	"net"
 	"os"
 	"sync"
@@ -378,6 +379,50 @@ func TestRingStatx(t *testing.T) {
 	err = unix.Statx(int(d.Fd()), path, 0, unix.STATX_ALL, &x2)
 	require.NoError(t, err)
 	require.Equal(t, x1, x2)
+}
+
+func TestSend(t *testing.T) {
+	r, err := New(2048, nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	sockFile := fmt.Sprintf("sock_test_%d.sock", rand.Int())
+
+	l, err := net.ListenUnix("unix", &net.UnixAddr{
+		Name: sockFile,
+		Net:  "unix",
+	})
+	require.NoError(t, err)
+	defer l.Close()
+
+	b := []byte("some bytes")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		conn, err := l.Accept()
+		if err != nil {
+			log.Fatal("accept error:", err)
+		}
+
+		exB := make([]byte, len(b))
+		_, err = conn.Read(exB)
+		require.NoError(t, err)
+		require.Equal(t, b, exB)
+
+		require.NoError(t, conn.Close())
+	}()
+
+	c, err := net.DialUnix("unix", nil, &net.UnixAddr{
+		Name: sockFile,
+		Net:  "unix",
+	})
+	require.NoError(t, err)
+	f, err := c.File()
+	require.NoError(t, err)
+	require.NoError(t, r.Send(int(f.Fd()), b, 0))
+	wg.Wait()
 }
 
 func BenchmarkStatxRing(b *testing.B) {

@@ -548,3 +548,85 @@ func (r *Ring) PrepareWritev(
 	ready()
 	return sqe.UserData, nil
 }
+
+// PrepareSend is used to prepare a Send SQE.
+func (r *Ring) PrepareSend(
+	fd int,
+	b []byte,
+	flags uint8,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Send
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Len = uint32(len(b))
+	sqe.Flags = flags
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Send is used to send data to a socket.
+func (r *Ring) Send(
+	fd int,
+	b []byte,
+	flags uint8,
+) error {
+	id, err := r.PrepareSend(fd, b, flags)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	// No GC until the request is done.
+	runtime.KeepAlive(b)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
+
+// PrepareRecv is used to prepare a Recv SQE.
+func (r *Ring) PrepareRecv(
+	fd int,
+	b []byte,
+	flags uint8,
+) (uint64, error) {
+	sqe, ready := r.SubmitEntry()
+	if sqe == nil {
+		return 0, errRingUnavailable
+	}
+
+	sqe.Opcode = Recv
+	sqe.UserData = r.ID()
+	sqe.Fd = int32(fd)
+	sqe.Len = uint32(len(b))
+	sqe.Flags = flags
+	sqe.Addr = (uint64)(uintptr(unsafe.Pointer(&b[0])))
+
+	ready()
+	return sqe.UserData, nil
+}
+
+// Recv is used to recv data on a socket.
+func (r *Ring) Recv(
+	fd int,
+	b []byte,
+	flags uint8,
+) error {
+	id, err := r.PrepareRecv(fd, b, flags)
+	if err != nil {
+		return err
+	}
+	errno, _ := r.complete(id)
+	// No GC until the request is done.
+	runtime.KeepAlive(b)
+	if errno < 0 {
+		return syscall.Errno(-errno)
+	}
+	return nil
+}
